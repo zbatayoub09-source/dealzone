@@ -1,84 +1,21 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DealZone — Best Deals</title>
-<style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f5f5f5;color:#222}a{text-decoration:none;color:inherit}.top{background:#191919;color:#fff;padding:9px 5%;font-size:13px}.header{background:#fff;position:sticky;top:0;z-index:20;box-shadow:0 2px 12px #0001}.head{max-width:1250px;margin:auto;padding:16px 20px;display:flex;gap:18px;align-items:center}.logo{font-size:28px;font-weight:900;color:#e62b20;white-space:nowrap}.logo span{color:#222}.search{flex:1;display:flex;border:2px solid #e62b20;border-radius:28px;overflow:hidden}.search input{flex:1;border:0;padding:12px 18px;font-size:15px;outline:0}.search button{border:0;background:#e62b20;color:#fff;padding:0 24px;font-weight:bold;cursor:pointer}.nav{max-width:1250px;margin:auto;padding:0 20px 14px;display:flex;gap:22px;font-size:14px;font-weight:bold;overflow:auto}.nav a:hover{color:#e62b20}.wrap{max-width:1250px;margin:auto;padding:22px 20px}.hero{background:linear-gradient(110deg,#171717,#3a1111);color:#fff;border-radius:18px;padding:42px;display:grid;grid-template-columns:1.5fr 1fr;gap:25px;align-items:center}.hero h1{font-size:clamp(30px,5vw,56px);margin:0 0 12px}.hero p{font-size:18px;color:#ddd;line-height:1.6}.hero .deal{background:#e62b20;border-radius:16px;padding:28px;text-align:center}.deal strong{display:block;font-size:42px}.section{margin-top:32px}.section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.section-title h2{margin:0;font-size:25px}.muted{color:#777;font-size:14px}.cats{display:flex;gap:10px;overflow:auto;padding-bottom:5px}.cat{border:1px solid #ddd;background:#fff;border-radius:22px;padding:10px 16px;white-space:nowrap;cursor:pointer}.cat.active,.cat:hover{background:#e62b20;color:#fff;border-color:#e62b20}.tools{display:flex;gap:10px;align-items:center}.tools select{padding:9px 12px;border:1px solid #ddd;border-radius:9px;background:#fff}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px #0000000d;transition:.2s;cursor:pointer}.card:hover{transform:translateY(-3px);box-shadow:0 8px 25px #0002}.pic{height:220px;background:#fafafa;display:flex;align-items:center;justify-content:center;position:relative}.pic img{width:100%;height:100%;object-fit:contain}.badge{position:absolute;left:10px;top:10px;background:#e62b20;color:#fff;padding:5px 8px;border-radius:6px;font-size:12px;font-weight:bold}.body{padding:13px}.title{font-size:14px;line-height:1.45;height:42px;overflow:hidden}.price{font-size:22px;font-weight:800;color:#e62b20;margin-top:9px}.old{text-decoration:line-through;color:#999;font-size:13px;margin-left:7px}.meta{font-size:12px;color:#777;margin-top:8px}.empty{text-align:center;padding:50px;background:#fff;border-radius:15px;color:#777}.status{padding:12px 15px;background:#fff4d6;border:1px solid #f1d58b;border-radius:10px;margin:15px 0;display:none}.modal{display:none;position:fixed;inset:0;background:#0009;z-index:50;padding:20px;overflow:auto}.modal.show{display:flex;align-items:center;justify-content:center}.modalbox{background:#fff;max-width:900px;width:100%;border-radius:18px;overflow:hidden;position:relative}.close{position:absolute;right:15px;top:12px;border:0;background:#fff;border-radius:50%;font-size:25px;width:40px;height:40px;cursor:pointer;z-index:2}.detail{display:grid;grid-template-columns:1fr 1fr}.detail-img{min-height:450px;display:flex;align-items:center;justify-content:center;background:#fafafa}.detail-img img{max-width:100%;max-height:450px}.detail-body{padding:35px}.buy{display:inline-block;background:#e62b20;color:#fff;padding:14px 28px;border-radius:8px;font-weight:bold;margin-top:18px}.footer{margin-top:50px;background:#191919;color:#ccc;padding:35px 20px;text-align:center;font-size:13px;line-height:1.7}@media(max-width:900px){.grid{grid-template-columns:repeat(3,1fr)}.hero{grid-template-columns:1fr}}@media(max-width:650px){.head{flex-wrap:wrap}.logo{width:100%}.search{order:2;width:100%}.grid{grid-template-columns:repeat(2,1fr)}.pic{height:180px}.detail{grid-template-columns:1fr}.detail-img{min-height:300px}.wrap{padding:15px}.hero{padding:28px 20px}.nav{gap:15px}}
-</style>
-</head>
-<body>
-<div class="top">🔥 Daily deals • Prices and offers may change on the merchant site</div>
-<header class="header"><div class="head"><div class="logo">Deal<span>Zone</span></div><div class="search"><input id="search" placeholder="Search products..."><button onclick="render()">Search</button></div></div><nav class="nav"><a href="#home">Home</a><a href="#featured">Featured Deals</a><a href="#products">All Products</a><a href="#categories">Categories</a><a href="#bestsellers">Best Sellers</a></nav></header>
-<main class="wrap" id="home">
-<section class="hero"><div><h1>Discover Great Deals</h1><p>Browse products imported directly from your CSV files. Each CSV file is automatically displayed as its own category.</p></div><div class="deal"><strong>HOT DEALS</strong><span>New products added automatically</span></div></section>
-<div id="status" class="status"></div>
-<section class="section" id="categories"><div class="section-title"><h2>Categories</h2><span class="muted" id="catCount"></span></div><div class="cats" id="cats"><button class="cat active" data-cat="all">All</button></div></section>
-<section class="section" id="featured"><div class="section-title"><h2>Featured Deals</h2><span class="muted">Best discounts</span></div><div class="grid" id="featuredGrid"></div></section>
-<section class="section" id="products"><div class="section-title"><h2>All Products</h2><div class="tools"><span class="muted" id="count"></span><select id="sort" onchange="render()"><option value="default">Sort: Featured</option><option value="discount">Biggest discount</option><option value="priceLow">Price: low to high</option><option value="priceHigh">Price: high to low</option><option value="sales">Best sellers</option></select></div></div><div class="grid" id="grid"></div></section>
-</main>
-<footer class="footer">DealZone • Product information is provided for convenience. Purchases are completed on the merchant's website. Affiliate links may earn a commission at no extra cost to you.</footer>
-<div class="modal" id="modal" onclick="if(event.target===this)closeModal()"><div class="modalbox"><button class="close" onclick="closeModal()">×</button><div class="detail"><div class="detail-img"><img id="dImg" alt=""></div><div class="detail-body"><h2 id="dTitle"></h2><div class="price" id="dPrice"></div><div class="meta" id="dMeta"></div><p id="dDesc"></p><a id="buy" class="buy" target="_blank" rel="nofollow sponsored">View Deal</a></div></div></div></div>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DealZone</title><style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f5f5f5;color:#222}a{text-decoration:none;color:inherit}.top{background:#111;color:#fff;padding:8px 5%;font-size:13px}.head{background:#fff;padding:18px 5%;display:flex;align-items:center;gap:25px;position:sticky;top:0;z-index:5;box-shadow:0 2px 8px #0001}.logo{font-size:28px;font-weight:900;color:#f22}.search{flex:1;display:flex;max-width:700px}.search input{width:100%;padding:13px;border:2px solid #f22;border-radius:8px 0 0 8px;font-size:15px}.search button{border:0;background:#f22;color:#fff;padding:0 22px;border-radius:0 8px 8px 0}.nav{background:#fff;padding:0 5% 14px;display:flex;gap:24px;font-weight:700;overflow:auto}.hero{margin:25px 5%;padding:45px;border-radius:18px;background:linear-gradient(120deg,#111,#333);color:#fff}.hero h1{font-size:42px;margin:0 0 10px}.hero span{color:#ff3030}.wrap{padding:0 5% 50px}.title{display:flex;justify-content:space-between;align-items:center;margin:28px 0 15px}.cats{display:flex;flex-wrap:wrap;gap:12px}.cat{background:#fff;border:1px solid #ddd;border-radius:12px;padding:15px 20px;font-weight:700;transition:.2s}.cat:hover{border-color:#f22;transform:translateY(-2px)}.count{color:#777;font-size:13px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px}.card{background:#fff;border-radius:14px;overflow:hidden;border:1px solid #eee;transition:.2s}.card:hover{transform:translateY(-4px);box-shadow:0 8px 25px #0002}.card img{width:100%;height:210px;object-fit:contain;background:#fff}.info{padding:13px}.name{height:42px;overflow:hidden;font-weight:600;font-size:14px}.price{color:#e22;font-size:21px;font-weight:900;margin-top:9px}.old{text-decoration:line-through;color:#999;font-size:13px;margin-left:7px}.btn{display:block;text-align:center;background:#f22;color:#fff;padding:11px;border-radius:8px;margin-top:12px;font-weight:700}.empty{padding:40px;background:#fff;border-radius:14px;text-align:center;color:#777}.foot{padding:30px 5%;background:#111;color:#aaa;text-align:center;margin-top:40px}@media(max-width:700px){.head{flex-wrap:wrap}.search{order:3;flex-basis:100%}.hero h1{font-size:30px}.hero{padding:30px 20px}}
+</style></head><body>
+<div class="top">🔥 DealZone — Hot Deals & Smart Shopping</div>
+<header class="head"><a class="logo" href="index.html">DealZone</a><div class="search"><input id="search" placeholder="Search products..."><button onclick="goSearch()">Search</button></div></header>
+<nav class="nav"><a href="index.html">Home</a><a href="#categories">Categories</a><a href="#featured">Featured Deals</a></nav>
+<section class="hero"><h1>Discover <span>Great Deals</span></h1><p>Shop products from our latest AliExpress collections.</p></section>
+<main class="wrap"><section id="categories"><div class="title"><h2>Categories</h2><span id="status" class="count">Loading...</span></div><div id="cats" class="cats"></div></section><section id="featured"><div class="title"><h2>Featured Deals</h2></div><div id="products" class="grid"></div></section></main>
+<footer class="foot">© DealZone · Product links may be affiliate links.</footer>
 <script>
-const OWNER='zbatayoub09-source',REPO='dealzone',BRANCH='main';
-let products=[],categories=[],activeCat='all';
-const $=id=>document.getElementById(id);
-function clean(v){return String(v??'').trim()}
-function num(v){let s=clean(v).replace(/[^0-9.,-]/g,'').replace(/,(?=[0-9]{3}\b)/g,'');let n=parseFloat(s.replace(',','.'));return Number.isFinite(n)?n:0}
-function esc(v){return clean(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function parseCSV(text){
- const rows=[];let row=[],cell='',quote=false;
- text=text.replace(/^\uFEFF/,'');
- for(let i=0;i<text.length;i++){const c=text[i],n=text[i+1];
-  if(c==='"'){if(quote&&n==='"'){cell+='"';i++;}else quote=!quote;}
-  else if(c===','&&!quote){row.push(cell);cell='';}
-  else if((c==='\n'||c==='\r')&&!quote){if(c==='\r'&&n==='\n')i++;row.push(cell);cell='';if(row.some(x=>clean(x)!==''))rows.push(row);row=[];}
-  else cell+=c;
- }
- if(cell!==''||row.length){row.push(cell);if(row.some(x=>clean(x)!==''))rows.push(row)}
- if(!rows.length)return [];
- const headers=rows.shift().map((h,i)=>clean(h)||('column'+i));
- return rows.map(r=>Object.fromEntries(headers.map((h,i)=>[h,clean(r[i]??'')])));
-}
-function mapRow(r,cat){
- const get=(...keys)=>{for(const k of keys){if(r[k]!==undefined&&clean(r[k])!=='')return r[k]}return ''};
- const title=get('Product Desc','Product Description','Title','title')||'Product';
- const image=get('Image Url','Image URL','Image Url 1','Image');
- const link=get('Promotion Url','Promotion URL','Product Url','Product URL','URL');
- const price=get('Discount Price','Sale Price','Price','price');
- const old=get('Origin Price','Original Price','Old Price');
- return {id:get('ProductId','Product ID','id')||crypto.randomUUID(),title,image,video:get('Video Url','Video URL','Video'),price,old,discount:get('Discount','Discount %'),currency:get('Currency',''),sales:get('Sales180Day','Sales','Orders'),rating:get('Positive Feedback','Rating','rating'),link,category:cat,desc:title};
-}
-async function load(){
- const status=$('status');status.style.display='block';status.textContent='Loading CSV files from GitHub…';
- try{
-  const api=`https://api.github.com/repos/${OWNER}/${REPO}/contents/?ref=${BRANCH}&t=${Date.now()}`;
-  const res=await fetch(api,{cache:'no-store',headers:{Accept:'application/vnd.github+json'}});
-  if(!res.ok)throw new Error('GitHub API '+res.status);
-  const files=await res.json();
-  const csvs=files.filter(f=>f.type==='file'&&/\.csv$/i.test(f.name));
-  if(!csvs.length)throw new Error('No CSV files found in repository root');
-  const loaded=await Promise.all(csvs.map(async f=>{
-   const r=await fetch(f.download_url+'?v='+Date.now(),{cache:'no-store'});
-   if(!r.ok)throw new Error(f.name+' → '+r.status);
-   const text=await r.text();
-   const rows=parseCSV(text);
-   return {name:f.name,rows};
-  }));
-  products=[];categories=[];
-  for(const item of loaded){if(!item.rows.length)continue;const cat=item.name.replace(/\.csv$/i,'').trim();categories.push(cat);products.push(...item.rows.map(r=>mapRow(r,cat)))}
-  categories=[...new Set(categories)];
-  renderCats();render();
-  status.textContent=`✓ Loaded ${products.length.toLocaleString()} products from ${categories.length} CSV categories.`;
-  if(!products.length)status.textContent='CSV files were found, but no product rows were detected.';
- }catch(e){console.error(e);status.textContent='❌ Could not load products: '+e.message;}
-}
-function renderCats(){const el=$('cats');el.innerHTML='<button class="cat '+(activeCat==='all'?'active':'')+'" data-cat="all">All</button>'+categories.map(c=>`<button class="cat ${activeCat===c?'active':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('');el.querySelectorAll('.cat').forEach(b=>b.onclick=()=>{activeCat=b.dataset.cat;renderCats();render()});$('catCount').textContent=categories.length+' categories'}
-function card(p){const d=Math.round(num(p.discount));return `<article class="card" onclick="openModal(${products.indexOf(p)})"><div class="pic">${d>0?`<span class="badge">-${d}%</span>`:''}${p.image?`<img loading="lazy" src="${esc(p.image)}" onerror="this.style.display='none'">`:''}</div><div class="body"><div class="title">${esc(p.title)}</div><div class="price">${esc(p.price||'—')} ${esc(p.currency)} ${p.old?`<span class="old">${esc(p.old)}</span>`:''}</div><div class="meta">${esc(p.category)} ${p.sales?' • '+esc(p.sales)+' sales':''}</div></div></article>`}
-function render(){let q=clean($('search').value).toLowerCase();let arr=products.filter(p=>(activeCat==='all'||p.category===activeCat)&&(!q||p.title.toLowerCase().includes(q)||p.category.toLowerCase().includes(q)));const s=$('sort').value;arr.sort((a,b)=>s==='discount'?num(b.discount)-num(a.discount):s==='priceLow'?num(a.price)-num(b.price):s==='priceHigh'?num(b.price)-num(a.price):s==='sales'?num(b.sales)-num(a.sales):0);$('count').textContent=arr.length.toLocaleString()+' products';$('grid').innerHTML=arr.length?arr.map(card).join(''):'<div class="empty" style="grid-column:1/-1">No products found.</div>';let feat=[...products].sort((a,b)=>num(b.discount)-num(a.discount)||num(b.sales)-num(a.sales)).slice(0,8);$('featuredGrid').innerHTML=feat.length?feat.map(card).join(''):'<div class="empty" style="grid-column:1/-1">No featured products.</div>'}
-function openModal(i){const p=products[i];if(!p)return;$('dImg').src=p.image||'';$('dTitle').textContent=p.title;$('dPrice').textContent=`${p.price||'—'} ${p.currency||''}`;$('dMeta').textContent=`Category: ${p.category}${p.sales?' • Sales: '+p.sales:''}${p.rating?' • Feedback: '+p.rating:''}`;$('dDesc').textContent=p.desc;$('buy').href=p.link||'#';$('buy').style.display=p.link?'inline-block':'none';$('modal').classList.add('show')}
-function closeModal(){$('modal').classList.remove('show')}
-$('search').addEventListener('input',render);load();
-</script>
-</body></html>
+const OWNER='zbatayoub09-source',REPO='dealzone',BRANCH='main';let files=[],all=[];
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function parseCSV(t){let rows=[],row=[],cell='',q=false;for(let i=0;i<t.length;i++){let c=t[i],n=t[i+1];if(c==='"'){if(q&&n==='"'){cell+='"';i++}else q=!q}else if(c===','&&!q){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!q){if(c==='\r'&&n==='\n')i++;row.push(cell);cell='';if(row.some(x=>x.trim()))rows.push(row);row=[]}else cell+=c}row.push(cell);if(row.some(x=>x.trim()))rows.push(row);if(!rows.length)return[];let h=rows.shift().map(x=>x.replace(/^\uFEFF/,'').trim());return rows.map(r=>Object.fromEntries(h.map((k,i)=>[k,(r[i]??'').trim()])))}
+function nameOf(f){return f.name.replace(/\.csv$/i,'')}
+function val(p,...keys){for(const k of keys)if(p[k]!==undefined&&String(p[k]).trim()!=='')return p[k];return ''}
+function card(p){let title=val(p,'Product Desc','ProductDesc','Title')||'Product';let img=val(p,'Image Url','Image URL','ImageUrl');let price=val(p,'Discount Price','DiscountPrice','Price');let old=val(p,'Origin Price','OriginPrice');let cur=val(p,'Currency')||'USD';let link=val(p,'Promotion Url','Promotion URL','PromotionUrl')||'#';return `<article class="card"><a href="${esc(link)}" target="_blank" rel="nofollow sponsored noopener"><img src="${esc(img)}" loading="lazy" onerror="this.style.display='none'"><div class="info"><div class="name">${esc(title)}</div><div class="price">${esc(price)} ${esc(cur)} ${old?`<span class="old">${esc(old)}</span>`:''}</div><span class="btn">View Deal</span></div></a></article>`}
+async function load(){try{let r=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/?ref=${BRANCH}`,{cache:'no-store'});if(!r.ok)throw Error('GitHub API '+r.status);let list=await r.json();files=list.filter(x=>x.type==='file'&&/\.csv$/i.test(x.name));let good=[];for(const f of files){try{let t=await fetch(f.download_url,{cache:'no-store'}).then(x=>x.text());let rows=parseCSV(t);if(rows.length)good.push({file:f,rows})}catch(e){console.warn(f.name,e)}}files=good;all=good.flatMap(x=>x.rows.map(p=>({...p,__category:nameOf(x.file)})));document.getElementById('status').textContent=`${files.length} categories · ${all.length} products`;document.getElementById('cats').innerHTML=files.map(x=>`<a class="cat" href="category.html?file=${encodeURIComponent(x.file.name)}">${esc(nameOf(x.file))}<div class="count">${x.rows.length} products</div></a>`).join('');let featured=[...all].sort((a,b)=>parseFloat(val(b,'Discount'))-parseFloat(val(a,'Discount'))).slice(0,20);document.getElementById('products').innerHTML=featured.map(card).join('')||'<div class="empty">No products found.</div>'}catch(e){document.getElementById('status').textContent='Loading error';document.getElementById('cats').innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
+function goSearch(){let q=document.getElementById('search').value.trim();if(q)location.href='category.html?q='+encodeURIComponent(q)}
+document.getElementById('search').addEventListener('keydown',e=>{if(e.key==='Enter')goSearch()});load();
+</script></body></html>
