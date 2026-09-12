@@ -1,0 +1,104 @@
+name: Prepare Blogger CSVs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare CSV files
+        shell: python
+        run: |
+          import csv, re, zipfile
+          from pathlib import Path
+
+          root = Path('.')
+          out = root / 'blogger_ready_csv'
+          out.mkdir(exist_ok=True)
+
+          def clean_text(s):
+              s = (s or '').replace('\\r', ' ').replace('\\n', ' ')
+              s = re.sub(r'\\s+', ' ', s).strip()
+              s = re.sub(r'\\s*([,;:])\\s*', r'\\1 ', s)
+              s = re.sub(r'([!?.])\\1+', r'\\1', s)
+              return s.strip(' -_')
+
+          def make_title(raw):
+              s = clean_text(raw)
+              s = re.sub(r'^(new|hot|sale|202[0-9]|202[0-9] new)\\s+', '', s, flags=re.I)
+              s = re.sub(r'\\s+', ' ', s).strip()
+              return s[:140].rstrip(' ,;:-')
+
+          def make_description(title, category):
+              cat = category.replace('&', 'and').strip()
+              return f'{title}. Explore this product in {cat}. Check the product page for available specifications, variants, compatibility, and the latest price.'
+
+          csv_files = sorted(root.glob('*.csv'))
+          for src in csv_files:
+              try:
+                  with src.open('r', encoding='utf-8-sig', newline='') as f:
+                      rows = list(csv.reader(f))
+              except UnicodeDecodeError:
+                  with src.open('r', encoding='latin-1', newline='') as f:
+                      rows = list(csv.reader(f))
+              if not rows:
+                  continue
+
+              header = rows[0]
+              norm = [re.sub(r'\\s+', ' ', h.strip().lower()) for h in header]
+              product_idx = None
+              for name in ('product desc','productdesc','title'):
+                  if name in norm:
+                      product_idx = norm.index(name)
+                      break
+              if product_idx is None:
+                  continue
+
+              # Preserve every original column/value and add dedicated Title/Description columns.
+              if 'title' not in norm:
+                  header.append('Title')
+              else:
+                  title_idx = norm.index('title')
+              if 'description' not in norm:
+                  header.append('Description')
+              else:
+                  desc_idx = norm.index('description')
+
+              category = src.stem
+              new_rows = [header]
+              for row in rows[1:]:
+                  row = row + [''] * (len(header) - len(row))
+                  raw = row[product_idx] if product_idx < len(row) else ''
+                  title = make_title(raw)
+                  desc = make_description(title, category)
+                  if 'title' in norm:
+                      row[title_idx] = title
+                  else:
+                      row[-2] = title
+                  if 'description' in norm:
+                      row[desc_idx] = desc
+                  else:
+                      row[-1] = desc
+                  new_rows.append(row)
+
+              dest = out / src.name
+              with dest.open('w', encoding='utf-8-sig', newline='') as f:
+                  csv.writer(f, quoting=csv.QUOTE_MINIMAL).writerows(new_rows)
+
+          zip_path = root / 'blogger_ready_csv.zip'
+          with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
+              for p in sorted(out.glob('*.csv')):
+                  z.write(p, arcname=p.name)
+
+      - name: Upload ready CSVs
+        uses: actions/upload-artifact@v4
+        with:
+          name: blogger-ready-csv
+          path: blogger_ready_csv.zip
+          retention-days: 14
