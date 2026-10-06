@@ -1,0 +1,29 @@
+name: Build Metricool CSV
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "*.csv"
+      - "process_csv.py"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Metricool CSV
+        run: python process_csv.py
+
+      - name: Commit generated CSV
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add metricool.csv
+          git diff --cached --quiet || git commit -m "Generate Metricool CSV"
+          git push
