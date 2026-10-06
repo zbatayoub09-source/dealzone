@@ -24,6 +24,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add metricool.csv
+          git add metricool.csv metricool_part_*.csv
           git diff --cached --quiet || git commit -m "Generate Metricool CSV"
           git push
