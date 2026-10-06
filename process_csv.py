@@ -47,7 +47,7 @@ for INPUT in INPUTS:
             if not desc or not image or not link:
                 continue
 
-            dt = start + timedelta(hours=slot * 4)
+            dt = start + timedelta(minutes=slot * 6)
             slot += 1
             title = short_title(desc)
             out = {h: "" for h in HEADERS}
