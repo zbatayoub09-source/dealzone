@@ -1,73 +1,235 @@
-name: Gemini SEO CSV
+````yaml
+name: Generate SEO with Gemini
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "**/*.csv"
 
 permissions:
   contents: write
 
 jobs:
-  generate-seo:
+  seo:
     runs-on: ubuntu-latest
 
     steps:
+
+      # =========================================
+      # 1. Checkout
+      # =========================================
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      # =========================================
+      # 2. Python
+      # =========================================
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      # =========================================
+      # 3. Install dependencies
+      # =========================================
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install google-genai pandas
 
+      # =========================================
+      # 4. Generate SEO
+      # =========================================
       - name: Generate descriptions and hashtags
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python <<'PY'
+          python - <<'PY'
           import os
           import csv
+          import json
           import time
+          import urllib.request
+          import urllib.error
           from pathlib import Path
-          from google import genai
+
+          # =========================================
+          # SETTINGS
+          # =========================================
 
           API_KEY = os.environ.get("GEMINI_API_KEY")
 
           if not API_KEY:
-              raise RuntimeError("GEMINI_API_KEY is missing from GitHub Secrets")
+              raise RuntimeError(
+                  "GEMINI_API_KEY is missing from GitHub Secrets"
+              )
 
-          client = genai.Client(api_key=API_KEY)
-
-          # Gemini model
           MODEL = "gemini-2.5-flash"
 
-          # Find every CSV in the repository
-          csv_files = list(Path(".").rglob("*.csv"))
+          # Maximum NEW products processed in one run
+          MAX_NEW_PRODUCTS = 20
 
-          # Ignore GitHub/internal folders
-          csv_files = [
-              p for p in csv_files
-              if ".git" not in p.parts
-              and "node_modules" not in p.parts
-          ]
+          # Number of retry attempts after temporary errors
+          MAX_RETRIES = 6
 
-          print(f"Found {len(csv_files)} CSV files")
+          # Initial retry delay
+          INITIAL_DELAY = 10
 
-          def generate_seo(product):
-              title = product.get("title", "").strip()
-              desc = product.get("Product Desc", "").strip()
-              product_id = product.get("ProductId", "").strip()
+          # Save after every successful product
+          SAVE_AFTER_EACH_PRODUCT = True
 
-              source = title or desc
+          # =========================================
+          # GEMINI API
+          # =========================================
+
+          API_URL = (
+              "https://generativelanguage.googleapis.com/v1beta/models/"
+              + MODEL
+              + ":generateContent?key="
+              + API_KEY
+          )
+
+          def call_gemini(prompt):
+
+              payload = {
+                  "contents": [
+                      {
+                          "parts": [
+                              {
+                                  "text": prompt
+                              }
+                          ]
+                      }
+                  ],
+                  "generationConfig": {
+                      "temperature": 0.7,
+                      "responseMimeType": "application/json"
+                  }
+              }
+
+              data = json.dumps(payload).encode("utf-8")
+
+              for attempt in range(1, MAX_RETRIES + 1):
+
+                  request = urllib.request.Request(
+                      API_URL,
+                      data=data,
+                      headers={
+                          "Content-Type": "application/json"
+                      },
+                      method="POST"
+                  )
+
+                  try:
+
+                      with urllib.request.urlopen(
+                          request,
+                          timeout=120
+                      ) as response:
+
+                          raw = response.read().decode("utf-8")
+
+                          result = json.loads(raw)
+
+                          text = (
+                              result["candidates"][0]["content"]
+                              ["parts"][0]["text"]
+                          )
+
+                          return text
+
+                  except urllib.error.HTTPError as e:
+
+                      status = e.code
+
+                      print(
+                          f"Gemini HTTP error {status} "
+                          f"(attempt {attempt}/{MAX_RETRIES})"
+                      )
+
+                      # Temporary server / rate-limit errors
+                      if status in (429, 500, 502, 503, 504):
+
+                          if attempt < MAX_RETRIES:
+
+                              delay = INITIAL_DELAY * (2 ** (attempt - 1))
+
+                              # Maximum wait = 120 seconds
+                              delay = min(delay, 120)
+
+                              print(
+                                  f"Temporary Gemini error. "
+                                  f"Waiting {delay} seconds..."
+                              )
+
+                              time.sleep(delay)
+                              continue
+
+                      # Other errors are permanent
+                      try:
+                          error_body = e.read().decode("utf-8")
+                          print("Gemini response:")
+                          print(error_body[:2000])
+                      except Exception:
+                          pass
+
+                      return None
+
+                  except Exception as e:
+
+                      print(
+                          f"Gemini connection error "
+                          f"(attempt {attempt}/{MAX_RETRIES}): {e}"
+                      )
+
+                      if attempt < MAX_RETRIES:
+
+                          delay = INITIAL_DELAY * (2 ** (attempt - 1))
+                          delay = min(delay, 120)
+
+                          print(
+                              f"Waiting {delay} seconds before retry..."
+                          )
+
+                          time.sleep(delay)
+                          continue
+
+                      return None
+
+              return None
+
+          # =========================================
+          # GENERATE SEO
+          # =========================================
+
+          def generate_seo(row):
+
+              product_id = str(
+                  row.get("ProductId", "")
+              ).strip()
+
+              title = str(
+                  row.get("title", "")
+              ).strip()
+
+              product_desc = str(
+                  row.get("Product Desc", "")
+              ).strip()
+
+              # Some CSVs may use other title columns
+              if not title:
+                  title = str(
+                      row.get("Title", "")
+                  ).strip()
+
+              if not title:
+                  title = str(
+                      row.get("product_title", "")
+                  ).strip()
+
+              source = title or product_desc
 
               if not source:
+                  print("No title/description. Skipping.")
                   return "", ""
 
               prompt = f"""
@@ -82,9 +244,9 @@ jobs:
           {title}
 
           Existing product description:
-          {desc}
+          {product_desc}
 
-          Return ONLY valid JSON in this exact format:
+          Return ONLY valid JSON:
 
           {{
             "description": "SEO-friendly product description",
@@ -92,50 +254,149 @@ jobs:
           }}
 
           Rules:
+
           - Write the description in clear English.
           - Make it attractive for shoppers.
+          - Keep it around 80-150 words.
           - Do not invent technical specifications.
+          - Use only information supported by the product title
+            or existing description.
           - Do not mention affiliate links.
-          - Do not mention that AI generated the text.
-          - Keep the description around 80-150 words.
+          - Do not mention AI.
+          - Do not use fake claims.
           - Generate 5-10 relevant hashtags.
+          - Hashtags must start with #.
+          - Return JSON only.
           """
 
+              response_text = call_gemini(prompt)
+
+              if not response_text:
+                  return "", ""
+
               try:
-                  response = client.models.generate_content(
-                      model=MODEL,
-                      contents=prompt
-                  )
 
-                  text = response.text.strip()
+                  # Clean possible markdown fences
+                  text = response_text.strip()
 
-                  # Extract JSON safely
-                  start = text.find("{")
-                  end = text.rfind("}")
+                  if text.startswith("```"):
+                      text = text.replace("```json", "")
+                      text = text.replace("```", "")
+                      text = text.strip()
 
-                  if start == -1 or end == -1:
-                      print("Invalid Gemini response")
-                      return "", ""
+                  data = json.loads(text)
 
-                  import json
-                  data = json.loads(text[start:end + 1])
+                  description = str(
+                      data.get("description", "")
+                  ).strip()
 
-                  return (
-                      str(data.get("description", "")).strip(),
-                      str(data.get("hashtags", "")).strip()
-                  )
+                  hashtags = str(
+                      data.get("hashtags", "")
+                  ).strip()
+
+                  return description, hashtags
 
               except Exception as e:
-                  print(f"Gemini error: {e}")
+
+                  print(
+                      f"Could not parse Gemini JSON: {e}"
+                  )
+
+                  print(
+                      "Gemini response:"
+                  )
+
+                  print(response_text[:2000])
+
                   return "", ""
+
+          # =========================================
+          # SAVE CSV
+          # =========================================
+
+          def save_csv(csv_path, fieldnames, rows):
+
+              temp_path = csv_path.with_suffix(
+                  csv_path.suffix + ".tmp"
+              )
+
+              with open(
+                  temp_path,
+                  "w",
+                  encoding="utf-8-sig",
+                  newline=""
+              ) as f:
+
+                  writer = csv.DictWriter(
+                      f,
+                      fieldnames=fieldnames,
+                      extrasaction="ignore"
+                  )
+
+                  writer.writeheader()
+                  writer.writerows(rows)
+
+              # Replace original only after successful write
+              temp_path.replace(csv_path)
+
+              print(
+                  f"Saved: {csv_path}"
+              )
+
+          # =========================================
+          # FIND CSV FILES
+          # =========================================
+
+          csv_files = list(
+              Path(".").rglob("*.csv")
+          )
+
+          csv_files = [
+              p for p in csv_files
+              if ".git" not in p.parts
+              and "node_modules" not in p.parts
+              and ".tmp" not in p.name
+          ]
+
+          csv_files.sort()
+
+          print(
+              f"Found {len(csv_files)} CSV files"
+          )
+
+          # =========================================
+          # GLOBAL COUNTER
+          # =========================================
+
+          total_new = 0
+
+          # =========================================
+          # PROCESS CSV FILES
+          # =========================================
 
           for csv_path in csv_files:
 
-              print(f"\nProcessing: {csv_path}")
+              if total_new >= MAX_NEW_PRODUCTS:
+                  break
+
+              print("")
+              print("=" * 70)
+              print(
+                  f"Processing: {csv_path}"
+              )
+              print("=" * 70)
 
               try:
-                  with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+
+                  with open(
+                      csv_path,
+                      "r",
+                      encoding="utf-8-sig",
+                      newline=""
+                  ) as f:
+
                       reader = csv.DictReader(f)
+
                       rows = list(reader)
                       fieldnames = reader.fieldnames or []
 
@@ -143,80 +404,197 @@ jobs:
                       print("Empty CSV - skipped")
                       continue
 
-                  # Add the two new columns
+                  # -----------------------------------------
+                  # Add SEO columns if missing
+                  # -----------------------------------------
+
                   if "description" not in fieldnames:
                       fieldnames.append("description")
 
                   if "hashtags" not in fieldnames:
                       fieldnames.append("hashtags")
 
-                  changed = False
+                  # -----------------------------------------
+                  # Count products needing SEO
+                  # -----------------------------------------
 
-                  for index, row in enumerate(rows, start=1):
+                  new_count = 0
 
-                      # Do not regenerate existing content
-                      old_description = row.get("description", "").strip()
-                      old_hashtags = row.get("hashtags", "").strip()
+                  for row in rows:
 
-                      if old_description and old_hashtags:
-                          continue
+                      description = str(
+                          row.get("description", "")
+                      ).strip()
 
-                      print(
-                          f"{csv_path.name}: "
-                          f"product {index}/{len(rows)}"
+                      hashtags = str(
+                          row.get("hashtags", "")
+                      ).strip()
+
+                      if not description or not hashtags:
+                          new_count += 1
+
+                  print(
+                      f"Rows: {len(rows)} "
+                      f"New SEO: {new_count}"
+                  )
+
+                  if new_count == 0:
+
+                      # Still ensure columns are present
+                      save_csv(
+                          csv_path,
+                          fieldnames,
+                          rows
                       )
 
-                      description, hashtags = generate_seo(row)
+                      continue
+
+                  # -----------------------------------------
+                  # Process rows
+                  # -----------------------------------------
+
+                  for index, row in enumerate(
+                      rows,
+                      start=1
+                  ):
+
+                      if total_new >= MAX_NEW_PRODUCTS:
+                          break
+
+                      old_description = str(
+                          row.get("description", "")
+                      ).strip()
+
+                      old_hashtags = str(
+                          row.get("hashtags", "")
+                      ).strip()
+
+                      # Already complete
+                      if (
+                          old_description
+                          and old_hashtags
+                      ):
+                          continue
+
+                      print("")
+                      print(
+                          f"Product {index}/{len(rows)}"
+                      )
+
+                      description, hashtags = generate_seo(
+                          row
+                      )
+
+                      # -----------------------------------------
+                      # SUCCESS
+                      # -----------------------------------------
 
                       if description:
-                          row["description"] = description
-                          changed = True
 
-                      if hashtags:
-                          row["hashtags"] = hashtags
-                          changed = True
-
-                      # Small delay to reduce API pressure
-                      time.sleep(2)
-
-                  if changed:
-                      with open(
-                          csv_path,
-                          "w",
-                          encoding="utf-8-sig",
-                          newline=""
-                      ) as f:
-
-                          writer = csv.DictWriter(
-                              f,
-                              fieldnames=fieldnames,
-                              extrasaction="ignore"
+                          row["description"] = (
+                              description
                           )
 
-                          writer.writeheader()
-                          writer.writerows(rows)
+                      if hashtags:
 
-                      print(f"Updated: {csv_path}")
+                          row["hashtags"] = (
+                              hashtags
+                          )
 
-                  else:
-                      print(f"No changes: {csv_path}")
+                      if description or hashtags:
+
+                          total_new += 1
+
+                          print(
+                              f"SEO generated successfully. "
+                              f"Total this run: "
+                              f"{total_new}/{MAX_NEW_PRODUCTS}"
+                          )
+
+                          # SAVE IMMEDIATELY
+                          if SAVE_AFTER_EACH_PRODUCT:
+
+                              save_csv(
+                                  csv_path,
+                                  fieldnames,
+                                  rows
+                              )
+
+                      else:
+
+                          print(
+                              "No SEO generated for this product."
+                          )
+
+                          # Save anyway in case previous
+                          # successful products exist
+                          save_csv(
+                              csv_path,
+                              fieldnames,
+                              rows
+                          )
+
+                      # Small delay between products
+                      time.sleep(3)
+
+                  # -----------------------------------------
+                  # Final save for this CSV
+                  # -----------------------------------------
+
+                  save_csv(
+                      csv_path,
+                      fieldnames,
+                      rows
+                  )
 
               except Exception as e:
-                  print(f"ERROR processing {csv_path}: {e}")
 
-          print("\nAll CSV files processed.")
+                  print(
+                      f"ERROR processing {csv_path}: {e}"
+                  )
+
+                  # Continue with next CSV
+                  continue
+
+          # =========================================
+          # FINAL REPORT
+          # =========================================
+
+          print("")
+          print("=" * 70)
+          print("SEO GENERATION FINISHED")
+          print("=" * 70)
+
+          print(
+              f"New SEO products generated: {total_new}"
+          )
+
+          print(
+              f"Maximum per run: {MAX_NEW_PRODUCTS}"
+          )
+
+          print("")
+          print(
+              "Run the workflow again to continue "
+              "processing remaining products."
+          )
+
           PY
 
-      - name: Commit generated SEO content
+      # =========================================
+      # 5. Commit CSV changes
+      # =========================================
+      - name: Commit CSV changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add "**/*.csv"
+          git add -A -- '*.csv'
 
           if git diff --cached --quiet; then
             echo "No CSV changes to commit."
           else
-            git commit -m "Generate Gemini SEO descriptions and hashtags"
+            git commit -m "Generate SEO descriptions and hashtags"
             git push
           fi
+````
