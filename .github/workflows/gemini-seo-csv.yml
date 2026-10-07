@@ -1,0 +1,222 @@
+name: Gemini SEO CSV
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "**/*.csv"
+
+permissions:
+  contents: write
+
+jobs:
+  generate-seo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-genai pandas
+
+      - name: Generate descriptions and hashtags
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python <<'PY'
+          import os
+          import csv
+          import time
+          from pathlib import Path
+          from google import genai
+
+          API_KEY = os.environ.get("GEMINI_API_KEY")
+
+          if not API_KEY:
+              raise RuntimeError("GEMINI_API_KEY is missing from GitHub Secrets")
+
+          client = genai.Client(api_key=API_KEY)
+
+          # Gemini model
+          MODEL = "gemini-2.5-flash"
+
+          # Find every CSV in the repository
+          csv_files = list(Path(".").rglob("*.csv"))
+
+          # Ignore GitHub/internal folders
+          csv_files = [
+              p for p in csv_files
+              if ".git" not in p.parts
+              and "node_modules" not in p.parts
+          ]
+
+          print(f"Found {len(csv_files)} CSV files")
+
+          def generate_seo(product):
+              title = product.get("title", "").strip()
+              desc = product.get("Product Desc", "").strip()
+              product_id = product.get("ProductId", "").strip()
+
+              source = title or desc
+
+              if not source:
+                  return "", ""
+
+              prompt = f"""
+          You are an expert e-commerce SEO copywriter.
+
+          Create SEO content for this product.
+
+          Product ID:
+          {product_id}
+
+          Product title:
+          {title}
+
+          Existing product description:
+          {desc}
+
+          Return ONLY valid JSON in this exact format:
+
+          {{
+            "description": "SEO-friendly product description",
+            "hashtags": "#hashtag1 #hashtag2 #hashtag3 #hashtag4 #hashtag5"
+          }}
+
+          Rules:
+          - Write the description in clear English.
+          - Make it attractive for shoppers.
+          - Do not invent technical specifications.
+          - Do not mention affiliate links.
+          - Do not mention that AI generated the text.
+          - Keep the description around 80-150 words.
+          - Generate 5-10 relevant hashtags.
+          """
+
+              try:
+                  response = client.models.generate_content(
+                      model=MODEL,
+                      contents=prompt
+                  )
+
+                  text = response.text.strip()
+
+                  # Extract JSON safely
+                  start = text.find("{")
+                  end = text.rfind("}")
+
+                  if start == -1 or end == -1:
+                      print("Invalid Gemini response")
+                      return "", ""
+
+                  import json
+                  data = json.loads(text[start:end + 1])
+
+                  return (
+                      str(data.get("description", "")).strip(),
+                      str(data.get("hashtags", "")).strip()
+                  )
+
+              except Exception as e:
+                  print(f"Gemini error: {e}")
+                  return "", ""
+
+          for csv_path in csv_files:
+
+              print(f"\nProcessing: {csv_path}")
+
+              try:
+                  with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+                      reader = csv.DictReader(f)
+                      rows = list(reader)
+                      fieldnames = reader.fieldnames or []
+
+                  if not rows:
+                      print("Empty CSV - skipped")
+                      continue
+
+                  # Add the two new columns
+                  if "description" not in fieldnames:
+                      fieldnames.append("description")
+
+                  if "hashtags" not in fieldnames:
+                      fieldnames.append("hashtags")
+
+                  changed = False
+
+                  for index, row in enumerate(rows, start=1):
+
+                      # Do not regenerate existing content
+                      old_description = row.get("description", "").strip()
+                      old_hashtags = row.get("hashtags", "").strip()
+
+                      if old_description and old_hashtags:
+                          continue
+
+                      print(
+                          f"{csv_path.name}: "
+                          f"product {index}/{len(rows)}"
+                      )
+
+                      description, hashtags = generate_seo(row)
+
+                      if description:
+                          row["description"] = description
+                          changed = True
+
+                      if hashtags:
+                          row["hashtags"] = hashtags
+                          changed = True
+
+                      # Small delay to reduce API pressure
+                      time.sleep(2)
+
+                  if changed:
+                      with open(
+                          csv_path,
+                          "w",
+                          encoding="utf-8-sig",
+                          newline=""
+                      ) as f:
+
+                          writer = csv.DictWriter(
+                              f,
+                              fieldnames=fieldnames,
+                              extrasaction="ignore"
+                          )
+
+                          writer.writeheader()
+                          writer.writerows(rows)
+
+                      print(f"Updated: {csv_path}")
+
+                  else:
+                      print(f"No changes: {csv_path}")
+
+              except Exception as e:
+                  print(f"ERROR processing {csv_path}: {e}")
+
+          print("\nAll CSV files processed.")
+          PY
+
+      - name: Commit generated SEO content
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add "**/*.csv"
+
+          if git diff --cached --quiet; then
+            echo "No CSV changes to commit."
+          else
+            git commit -m "Generate Gemini SEO descriptions and hashtags"
+            git push
+          fi
