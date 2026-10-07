@@ -1,0 +1,44 @@
+name: Generate SEO CSV
+
+on:
+  workflow_dispatch:
+    inputs:
+      csv_file:
+        description: "CSV to process, or all"
+        required: true
+        default: "all"
+  push:
+    paths:
+      - "*.csv"
+      - "seo_csv.py"
+
+permissions:
+  contents: read
+
+jobs:
+  seo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate SEO descriptions and hashtags
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python seo_csv.py --file "${{ inputs.csv_file }}"
+          else
+            python seo_csv.py --file all
+          fi
+
+      - name: Upload SEO CSV files
+        uses: actions/upload-artifact@v4
+        with:
+          name: seo-csv-output
+          path: output/seo/*.csv
+          if-no-files-found: error
+          retention-days: 14
