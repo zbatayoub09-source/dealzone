@@ -1,0 +1,130 @@
+name: Generate SEO with Gemini
+
+on:
+  workflow_dispatch:
+    inputs:
+      csv_file:
+        description: CSV file in repository root
+        required: true
+        default: Jewelry.csv
+        type: string
+      max_products:
+        description: 20 for first test, 0 for all remaining
+        required: true
+        default: "20"
+        type: string
+      batch_size:
+        description: Products per Gemini request
+        required: true
+        default: "5"
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  seo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate SEO
+        env:
+          GEMINI_API_KEY: \${{ secrets.GEMINI_API_KEY }}
+          CSV_FILE: \${{ inputs.csv_file }}
+          MAX_PRODUCTS: \${{ inputs.max_products }}
+          BATCH_SIZE: \${{ inputs.batch_size }}
+        run: |
+          python - <<'PY'
+          import csv,json,os,time,urllib.request,urllib.parse,urllib.error,re
+          from pathlib import Path
+
+          key=os.environ["GEMINI_API_KEY"]
+          file=os.environ["CSV_FILE"]
+          limit=int(os.environ["MAX_PRODUCTS"])
+          batch_size=int(os.environ["BATCH_SIZE"])
+          model="gemini-3.8-flash"
+          p=Path(file)
+
+          if not p.exists():
+              raise SystemExit("CSV not found: "+file)
+
+          with p.open("r",encoding="utf-8-sig",newline="") as f:
+              sample=f.read(8192); f.seek(0)
+              try: dialect=csv.Sniffer().sniff(sample,delimiters=",;\\t|")
+              except csv.Error: dialect=csv.excel
+              reader=csv.DictReader(f,dialect=dialect)
+              rows=list(reader); headers=list(reader.fieldnames or [])
+
+          for col in ("SEO_Description","Hashtags"):
+              if col not in headers: headers.append(col)
+
+          def source(row):
+              for col in ("Product Desc","Product Description","Description","Product Title","Title","Product Name","Name"):
+                  if row.get(col,"").strip():
+                      return re.sub(r"<[^>]*>"," ",row[col]).strip()[:3500]
+              return ""
+
+          pending=[]
+          for i,row in enumerate(rows):
+              if row.get("SEO_Description","").strip() and row.get("Hashtags","").strip(): continue
+              s=source(row)
+              if s: pending.append({"row_index":i,"source":s})
+          if limit>0: pending=pending[:limit]
+
+          def call(items):
+              prompt="""Create SEO content for these products.
+          Use only facts in the product text. Never invent specs, materials, sizes, compatibility, prices, discounts or guarantees.
+          Do not use the word affiliate.
+          For each product write a natural 35-70 word SEO_Description and 8-15 relevant hashtags.
+          Return ONLY JSON: {"items":[{"row_index":0,"SEO_Description":"...","Hashtags":"#tag #tag"}]}
+          Products:
+          """+json.dumps(items,ensure_ascii=False)
+
+              body={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"temperature":0.65,"responseMimeType":"application/json"}}
+              url="https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+urllib.parse.quote(key)
+              req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+              for n in range(5):
+                  try:
+                      with urllib.request.urlopen(req,timeout=180) as r:
+                          data=json.loads(r.read().decode())
+                      return json.loads(data["candidates"][0]["content"]["parts"][0]["text"])
+                  except urllib.error.HTTPError as e:
+                      if e.code in (429,500,502,503,504) and n<4:
+                          time.sleep(5*(2**n)); continue
+                      raise
+
+          print("Rows:",len(rows),"New SEO:",len(pending))
+          for start in range(0,len(pending),batch_size):
+              batch=pending[start:start+batch_size]
+              print("Batch",start+1,"-",start+len(batch))
+              result=call(batch)
+              for item in result.get("items",[]):
+                  try: i=int(item["row_index"])
+                  except: continue
+                  d=str(item.get("SEO_Description","")).strip()
+                  h=" ".join(re.findall(r"#[A-Za-z0-9_-]+",str(item.get("Hashtags",""))))
+                  if d: rows[i]["SEO_Description"]=d
+                  if h: rows[i]["Hashtags"]=h
+              tmp=str(p)+".tmp"
+              with open(tmp,"w",encoding="utf-8-sig",newline="") as f:
+                  w=csv.DictWriter(f,fieldnames=headers,delimiter=dialect.delimiter,extrasaction="ignore")
+                  w.writeheader(); w.writerows(rows)
+              os.replace(tmp,p)
+              time.sleep(1)
+          print("DONE")
+
+      - name: Commit CSV
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "\${{ inputs.csv_file }}"
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "Generate SEO descriptions and hashtags"
+            git push
+          fi
