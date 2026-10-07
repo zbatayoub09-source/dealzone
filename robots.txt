@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://zbatayoub09-source.github.io/dealzone/sitemap.xml
