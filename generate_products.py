@@ -157,8 +157,16 @@ def main():
         seen.add(pid)
         folder = OUT / pid
         folder.mkdir(parents=True, exist_ok=True)
-        same_cat = [r for c, r in all_products if c == category and val(r, "ProductId")]
-        related = same_cat[:8]
+        same_cat = [r for c, r in all_products if c == category and val(r, "ProductId") and val(r, "ProductId") != pid]
+        # Rotate the related-products window so every product page gets a different set
+        # while keeping all related products inside the same CSV/category.
+        if same_cat:
+            seed = sum((i + 1) * ord(ch) for i, ch in enumerate(pid))
+            start = seed % len(same_cat)
+            ordered = same_cat[start:] + same_cat[:start]
+            related = ordered[:8]
+        else:
+            related = []
         (folder / "index.html").write_text(page(row, category, related), encoding="utf-8")
         sitemap.append(f"<url><loc>{BASE}/{product_path(pid)}</loc></url>")
         count += 1
