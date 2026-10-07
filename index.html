@@ -4,12 +4,15 @@
 .signup{margin:48px 0 24px;background:#fff;border-radius:24px;border:1px solid #e5e7eb;padding:34px;box-shadow:0 16px 40px #1118270d}.signup h2{margin:0;font-size:30px}.signup p{color:#667085;margin:8px 0 24px}.formgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.field label{display:block;font-weight:700;font-size:13px;margin-bottom:8px}.field input{width:100%;padding:14px 15px;border:1px solid #d7dce5;border-radius:12px;font-size:15px;outline:0;transition:.2s}.field input:focus{border-color:#f22;box-shadow:0 0 0 4px #f2212114}.submit{margin-top:18px;border:0;background:#111827;color:#fff;padding:14px 24px;border-radius:12px;font-weight:800;cursor:pointer}.submit:hover{background:#f22}.privacy{font-size:12px;color:#7b8190;margin-top:12px}.signup h2{margin:0;font-size:29px}.signup p{color:#6c7382}.formgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.field label{display:block;font-weight:700;font-size:13px;margin-bottom:7px}.field input{width:100%;padding:13px;border:1px solid #d9dde5;border-radius:10px;font-size:15px}.submit{margin-top:17px;border:0;background:#f22;color:#fff;padding:14px 24px;border-radius:10px;font-weight:800;cursor:pointer}.privacy{font-size:12px;color:#7b8190;margin-top:10px}.optional label span{font-weight:400;color:#98a2b3}.signup-head{max-width:760px}@media(max-width:800px){.formgrid{grid-template-columns:1fr}}
 <style>
 /* Compact marketplace home */
-.market-cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px;padding:4px 0 10px}
-.market-cat{display:block;overflow:hidden;background:#fff;border:1px solid #e5e7eb;border-radius:14px;text-align:center;font-weight:800;font-size:14px;box-shadow:0 3px 12px #0000000a;transition:.2s}
-.market-cat:hover{border-color:#f22;transform:translateY(-4px);box-shadow:0 10px 25px #00000014}
-.market-cat img{display:block;width:100%;height:150px;object-fit:cover;background:#f8f8f8}
-.market-cat .cat-name{display:block;padding:12px 10px 3px}
-.market-cat .count{display:block;margin:3px 0 12px;font-weight:400;font-size:11px;color:#777}
+.market-cats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;padding:4px 0 12px}
+.market-cat{display:block;position:relative;overflow:hidden;min-height:205px;background:#fff;border:1px solid #e7e7e7;border-radius:16px;text-align:left;box-shadow:0 4px 14px #0000000b;transition:transform .22s,box-shadow .22s,border-color .22s}
+.market-cat:hover{border-color:#f22;transform:translateY(-5px);box-shadow:0 14px 30px #00000016}
+.market-cat img{display:block;width:100%;height:155px;object-fit:cover;background:#f8f8f8;transition:transform .3s}
+.market-cat:hover img{transform:scale(1.04)}
+.market-cat .cat-name{display:block;padding:12px 13px 2px;font-size:15px;line-height:1.2}
+.market-cat .count{display:block;padding:0 13px 12px;margin:3px 0 0;font-weight:400;font-size:11px;color:#777}
+@media(max-width:900px){.market-cats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.market-cats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.market-cat{min-height:175px;border-radius:12px}.market-cat img{height:120px}.market-cat .cat-name{font-size:13px;padding:9px 9px 1px}.market-cat .count{padding:0 9px 9px}}
 .market-sub{margin:28px 0;background:#fff;border:1px solid #eee;border-radius:14px;padding:22px 24px;display:flex;align-items:center;justify-content:space-between;gap:24px;box-shadow:0 4px 18px #00000008}
 .market-sub-copy{flex:1}.market-sub-copy .eyebrow{font-size:11px;font-weight:800;color:#f22;text-transform:uppercase;letter-spacing:.08em}
 .market-sub-copy h2{margin:5px 0 5px;font-size:22px}.market-sub-copy p{margin:0;color:#69707d;font-size:13px}
