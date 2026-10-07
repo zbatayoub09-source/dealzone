@@ -12,7 +12,9 @@
 .market-sub-copy{flex:1}.market-sub-copy .eyebrow{font-size:11px;font-weight:800;color:#f22;text-transform:uppercase;letter-spacing:.08em}
 .market-sub-copy h2{margin:5px 0 5px;font-size:22px}.market-sub-copy p{margin:0;color:#69707d;font-size:13px}
 .market-form{flex:1.35;display:flex;flex-direction:column;gap:10px;align-items:stretch;max-width:520px}
-.market-form input{width:100%;padding:13px 14px;border:1px solid #d9dde5;border-radius:9px;outline:0;font-size:14px}
+.market-form input,.market-form textarea{width:100%;padding:13px 14px;border:1px solid #d9dde5;border-radius:9px;outline:0;font-size:14px;font-family:inherit;resize:vertical}
+.market-form textarea{min-height:130px}
+.market-form input:focus,.market-form textarea:focus{border-color:#f22;box-shadow:0 0 0 3px #f2212114}
 .market-form input:focus{border-color:#f22;box-shadow:0 0 0 3px #f2212114}
 .market-form button{white-space:nowrap;border:0;background:#f22;color:#fff;padding:13px 18px;border-radius:9px;font-weight:800;cursor:pointer}
 .market-form button:hover{background:#d71920}
@@ -34,6 +36,7 @@
 <input name="Téléphone" type="tel" placeholder="Téléphone" required>
 <input name="Ville" type="text" list="morocco-cities" placeholder="Ville" autocomplete="off" required>
 <input name="Email" type="email" placeholder="Email (facultatif)" autocomplete="email">
+<textarea name="Message" placeholder="Votre message..." rows="6" required></textarea>
 <button type="submit">S'inscrire</button>
 <datalist id="morocco-cities"></datalist>
 </form></section></section><section id="featured"><div class="title"><h2>Featured Deals</h2></div><div id="products" class="grid"></div></section></main>
