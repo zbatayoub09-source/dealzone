@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260">
+<rect width="900" height="260" fill="white"/>
+<g transform="translate(450 35)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M-105 55h95l20-55h95l-22 72h-98" stroke="#111" stroke-width="16"/>
+<path d="M8 0h78l-18 58H-8" stroke="#f22" stroke-width="16"/>
+<circle cx="-55" cy="86" r="10" fill="#111" stroke="none"/><circle cx="73" cy="86" r="10" fill="#111" stroke="none"/>
+<path d="M-145 15h32M-155 38h42M-165 61h52" stroke="#f22" stroke-width="8"/>
+</g>
+<text x="450" y="165" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="78" font-weight="900" font-style="italic" letter-spacing="-4"><tspan fill="#111">Deal</tspan><tspan fill="#f22">Zone</tspan></text>
+<path d="M120 194h85M695 194h85" stroke="#f22" stroke-width="4"/>
+<text x="450" y="204" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="19" letter-spacing="7" fill="#111">BETTER DEALS, BIGGER SAVINGS</text>
+</svg>
