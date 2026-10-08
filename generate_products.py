@@ -7,11 +7,7 @@ OUT = ROOT / "products"
 BASE = "https://zbatayoub09-source.github.io/dealzone"
 SKIP_PREFIXES = ("metricool", "malabis rijal", "ملابس رجالية", "ملابس نسائية")
 
-CATEGORY_MAP = {
-    "malabis rijal - CA_USD_en": "Men's Fashion",
-    "ملابس رجالية - AW_USD_en": "Vetements Hommes",
-    "ملابس نسائية - CA_USD_en": "Women's Fashion",
-}
+CATEGORY_MAP = {}
 
 def clean(v):
     return re.sub(r"\s+", " ", str(v or "").replace("\x00", " ")).strip()
@@ -190,7 +186,7 @@ def main():
 
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     xml += f'<url><loc>{BASE}/</loc></url>\n'
-    for p in ["category.html","cnc-routers-machinery.html","computer-office.html","deals-offers.html","jewelry.html","motorcycle-accessories.html","motorcycles.html","tools-hardware.html","watches.html","mens-fashion.html","vetements-hommes.html","womens-fashion.html"]:
+    for p in ["category.html","cnc-routers-machinery.html","computer-office.html","deals-offers.html","jewelry.html","motorcycle-accessories.html","motorcycles.html","tools-hardware.html","watches.html"]:
         xml += f"<url><loc>{BASE}/{p}</loc></url>\n"
     xml += "\n".join(sitemap) + "\n</urlset>\n"
     (ROOT / "sitemap.xml").write_text(xml, encoding="utf-8")
