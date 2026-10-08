@@ -24,12 +24,26 @@
 .market-form button:hover{background:#d71920}
 @media(max-width:800px){.market-sub{display:block;padding:18px}.market-form{margin-top:14px;max-width:none}.market-form button{padding-left:14px;padding-right:14px}}
 @media(max-width:520px){.market-form button{width:100%}}
+
+.category-slider{margin:30px 0;background:#fff;border:1px solid #e8e8e8;border-radius:18px;padding:18px;box-shadow:0 6px 22px #0000000b}
+.slider-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.slider-head h2{margin:0;font-size:21px}.slider-actions{display:flex;align-items:center;gap:7px}
+.slider-actions a{font-size:12px;font-weight:800;color:#e22;margin-left:4px}
+.slider-arrow{width:34px;height:34px;border:1px solid #ddd;background:#fff;border-radius:50%;font-size:20px;cursor:pointer}.slider-arrow:hover{border-color:#e22;color:#e22}
+.slider-track{display:flex;gap:14px;overflow-x:auto;scroll-behavior:smooth;scrollbar-width:none;padding:2px}.slider-track::-webkit-scrollbar{display:none}
+.slider-card{flex:0 0 calc((100% - 42px)/4);background:#fff;border:1px solid #eee;border-radius:13px;overflow:hidden;transition:.2s}
+.slider-card:hover{transform:translateY(-3px);box-shadow:0 9px 22px #00000014}
+.slider-card img{width:100%;height:185px;display:block;object-fit:contain;background:#fafafa}
+.slider-info{padding:11px}.slider-name{height:38px;overflow:hidden;font-size:13px;font-weight:700;line-height:1.35}
+.slider-price{margin-top:7px;font-size:18px;font-weight:900;color:#e22}.slider-old{font-size:11px;color:#999;text-decoration:line-through;margin-left:5px;font-weight:400}
+.slider-stats{font-size:11px;color:#667085;margin-top:6px;min-height:16px}.slider-btn{display:block;background:#f22;color:#fff;text-align:center;padding:9px;border-radius:8px;margin-top:9px;font-size:12px;font-weight:800}
+@media(max-width:900px){.slider-card{flex-basis:calc((100% - 28px)/3)}}@media(max-width:650px){.slider-card{flex-basis:calc((100% - 14px)/2)}.slider-card img{height:150px}}@media(max-width:430px){.slider-card{flex-basis:78%}.slider-card img{height:175px}}
 </style></head><body>
 <div class="top">🔥 DealZone — Hot Deals & Smart Shopping</div>
 <header class="head"><a class="logo" href="index.html"><img src="logo.svg" alt="DealZone"></a><div class="search"><input id="search" placeholder="Search products..."><button onclick="goSearch()">Search</button></div></header>
 <nav class="nav"><a href="index.html">Home</a><a href="#categories">Categories</a><a href="#featured">Featured Deals</a><a href="#inscription">Inscription</a></nav>
 <section class="hero"><h1>Discover <span>Great Deals</span></h1><p>Shop smart. Find trending products and exclusive deals in one place.</p></section>
-<main class="wrap"><section id="categories"><div class="title"><h2>Shop by Category</h2><span id="status" class="count"></span></div><div id="cats" class="market-cats"></div></section><section id="inscription" class="market-sub">
+<main class="wrap"><section id="categories"><div class="title"><h2>Shop by Category</h2><span id="status" class="count"></span></div><div id="cats" class="market-cats"></div></section><section id="category-sliders"></section><section id="inscription" class="market-sub">
 <div class="market-sub-copy"><div class="eyebrow">DealZone</div><h2>Recevez nos meilleures offres</h2><p>Inscrivez-vous gratuitement. Nom, téléphone et ville sont requis. Email facultatif.</p></div>
 <form class="market-form" action="https://formsubmit.co/zbatayoub09@gmail.com" method="POST">
 <input type="hidden" name="_subject" value="Nouvelle inscription — DealZone">
@@ -53,7 +67,49 @@ function nameOf(f){return f.name.replace(/\.csv$/i,'')}
 function slug(name){return name.replace(/\.csv$/i,'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/§/g,'-').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')}
 function money(x,c){let n=parseFloat(String(x??'').replace(/[^0-9.,-]/g,'').replace(',','.'));return c==='MAD'&&Number.isFinite(n)?(n/11.16).toFixed(2):x}function val(p,...keys){for(const k of keys)if(p[k]!==undefined&&String(p[k]).trim()!=='')return p[k];return ''}
 function card(p){let pid=val(p,'ProductId')||'';let productHref=pid?'products/'+encodeURIComponent(pid)+'/':(val(p,'Promotion Url','Promotion URL','PromotionUrl')||'#');let title=val(p,'Product Desc','ProductDesc','Title')||'Product';let img=val(p,'Image Url','Image URL','ImageUrl');let price=val(p,'Discount Price','DiscountPrice','Price');let old=val(p,'Origin Price','OriginPrice');let cur=val(p,'Currency')||'USD';price=money(price,cur);old=money(old,cur);if(cur==='MAD')cur='EUR';let link=val(p,'Promotion Url','Promotion URL','PromotionUrl')||'#';return `<article class="card"><a href="${esc(productHref)}" rel="nofollow sponsored noopener"><img src="${esc(img)}" loading="lazy" onerror="this.style.display='none'"><div class="info"><div class="name">${esc(title)}</div><div class="price">${esc(price)} ${esc(cur)} ${old?`<span class="old">${esc(old)}</span>`:''}</div><span class="btn">View Deal</span></div></a></article>`}
-async function load(){try{let r=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/?ref=${BRANCH}`,{cache:'no-store'});if(!r.ok)throw Error('GitHub API '+r.status);let list=await r.json();files=list.filter(x=>x.type==='file'&&/\.csv$/i.test(x.name));let good=[];for(const f of files){try{let t=await fetch(f.download_url,{cache:'no-store'}).then(x=>x.text());let rows=parseCSV(t);if(rows.length)good.push({file:f,rows})}catch(e){console.warn(f.name,e)}}files=good;all=good.flatMap(x=>x.rows.map(p=>({...p,__category:nameOf(x.file)})));document.getElementById('status').textContent=`${files.length} categories · ${all.length} products`;document.getElementById('cats').innerHTML=files.map(x=>{let p=x.rows.find(r=>val(r,'Image Url','Image URL','ImageUrl'));let img=val(p||{},'Image Url','Image URL','ImageUrl');return `<a class="market-cat" href="${slug(x.file.name)}.html"><img src="${esc(img)}" loading="lazy" alt="${esc(nameOf(x.file))}" onerror="this.style.display='none'"><span class="cat-name">${esc(nameOf(x.file))}</span><span class="count">${x.rows.length} products</span></a>`;}).join('');let featured=[...all].sort((a,b)=>parseFloat(val(b,'Discount'))-parseFloat(val(a,'Discount'))).slice(0,20);document.getElementById('products').innerHTML=featured.map(card).join('')||'<div class="empty">No products found.</div>'}catch(e){document.getElementById('status').textContent='Loading error';document.getElementById('cats').innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
+
+function sliderCard(p){
+ let pid=val(p,'ProductId')||'';
+ let href=pid?'products/'+encodeURIComponent(pid)+'/':'#';
+ let title=val(p,'Product Desc','ProductDesc','Title')||'Product';
+ let img=val(p,'Image Url','Image URL','ImageUrl');
+ let price=val(p,'Discount Price','DiscountPrice','Price');
+ let old=val(p,'Origin Price','OriginPrice');
+ let cur=val(p,'Currency')||'USD';
+ price=money(price,cur); old=money(old,cur); if(cur==='MAD')cur='EUR';
+ let sales=val(p,'Sales180Day'), feedback=val(p,'Positive Feedback');
+ return '<article class="slider-card"><a href="'+esc(href)+'">'+
+ '<img src="'+esc(img)+'" loading="lazy" alt="'+esc(title.slice(0,90))+'" onerror="this.style.display=\'none\'">'+
+ '<div class="slider-info"><div class="slider-name">'+esc(title)+'</div>'+
+ '<div class="slider-price">'+esc(price)+' '+esc(cur)+(old?'<span class="slider-old">'+esc(old)+'</span>':'')+'</div>'+
+ '<div class="slider-stats">'+(sales?'🛒 '+esc(sales)+' sold':'')+(feedback?' · ⭐ '+esc(feedback):'')+'</div>'+
+ '<span class="slider-btn">View Product</span></div></a></article>';
+}
+function moveSlider(id,dir){
+ let el=document.getElementById(id); if(!el)return;
+ let card=el.querySelector('.slider-card');
+ el.scrollBy({left:dir*(card?card.offsetWidth+14:300),behavior:'smooth'});
+}
+function buildCategorySliders(){
+ let host=document.getElementById('category-sliders'); if(!host)return;
+ host.innerHTML=files.map(function(x,i){
+   let rows=x.rows.filter(function(r){return val(r,'ProductId')}).slice(0,12);
+   let id='deal-slider-'+i;
+   let cards=rows.map(sliderCard).join('');
+   return '<section class="category-slider">'+
+     '<div class="slider-head"><h2>'+esc(nameOf(x.file))+'</h2>'+
+     '<div class="slider-actions"><button class="slider-arrow" onclick="moveSlider(\''+id+'\',-1)">‹</button>'+
+     '<button class="slider-arrow" onclick="moveSlider(\''+id+'\',1)">›</button>'+
+     '<a href="'+esc(slug(x.file.name))+'.html">View all →</a></div></div>'+
+     '<div class="slider-track" id="'+id+'">'+cards+'</div></section>';
+ }).join('');
+ document.querySelectorAll('.slider-track').forEach(function(el){
+   let timer=setInterval(function(){moveSlider(el.id,1)},3500);
+   el.addEventListener('mouseenter',function(){clearInterval(timer)});
+   el.addEventListener('mouseleave',function(){timer=setInterval(function(){moveSlider(el.id,1)},3500)});
+ });
+}
+async function load(){try{let r=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/?ref=${BRANCH}`,{cache:'no-store'});if(!r.ok)throw Error('GitHub API '+r.status);let list=await r.json();files=list.filter(x=>x.type==='file'&&/\.csv$/i.test(x.name));let good=[];for(const f of files){try{let t=await fetch(f.download_url,{cache:'no-store'}).then(x=>x.text());let rows=parseCSV(t);if(rows.length)good.push({file:f,rows})}catch(e){console.warn(f.name,e)}}files=good;all=good.flatMap(x=>x.rows.map(p=>({...p,__category:nameOf(x.file)})));document.getElementById('status').textContent=`${files.length} categories · ${all.length} products`;document.getElementById('cats').innerHTML=files.map(x=>{let p=x.rows.find(r=>val(r,'Image Url','Image URL','ImageUrl'));let img=val(p||{},'Image Url','Image URL','ImageUrl');return `<a class="market-cat" href="${slug(x.file.name)}.html"><img src="${esc(img)}" loading="lazy" alt="${esc(nameOf(x.file))}" onerror="this.style.display='none'"><span class="cat-name">${esc(nameOf(x.file))}</span><span class="count">${x.rows.length} products</span></a>`;}).join('');let featured=[...all].sort((a,b)=>parseFloat(val(b,'Discount'))-parseFloat(val(a,'Discount'))).slice(0,20);document.getElementById('products').innerHTML=featured.map(card).join('')||'<div class="empty">No products found.</div>';buildCategorySliders()}catch(e){document.getElementById('status').textContent='Loading error';document.getElementById('cats').innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
 function goSearch(){let q=document.getElementById('search').value.trim();if(q)location.href='category.html?q='+encodeURIComponent(q)}
 document.getElementById('search').addEventListener('keydown',e=>{if(e.key==='Enter')goSearch()});load();
 </script></body></html>
