@@ -30,7 +30,7 @@
 .slider-head h2{margin:0;font-size:21px}.slider-actions{display:flex;align-items:center;gap:7px}
 .slider-actions a{font-size:12px;font-weight:800;color:#e22;margin-left:4px}
 .slider-arrow{width:34px;height:34px;border:1px solid #ddd;background:#fff;border-radius:50%;font-size:20px;cursor:pointer}.slider-arrow:hover{border-color:#e22;color:#e22}
-.slider-track{display:flex;gap:14px;overflow-x:auto;scroll-behavior:smooth;scrollbar-width:none;padding:2px}.slider-track::-webkit-scrollbar{display:none}
+.slider-track{display:flex;gap:14px;overflow-x:auto;scroll-behavior:auto;scrollbar-width:none;padding:2px}.slider-track::-webkit-scrollbar{display:none}
 .slider-card{flex:0 0 calc((100% - 42px)/4);background:#fff;border:1px solid #eee;border-radius:13px;overflow:hidden;transition:.2s}
 .slider-card:hover{transform:translateY(-3px);box-shadow:0 9px 22px #00000014}
 .slider-card img{width:100%;height:185px;display:block;object-fit:contain;background:#fafafa}
@@ -117,7 +117,7 @@ function buildCategorySliders(){
      const delta=Math.min(now-last,40);
      last=now;
      const half=halfWidth();
-     el.scrollLeft+=direction*delta*0.035;
+     el.scrollLeft+=direction*delta*0.075;
      if(direction>0&&el.scrollLeft>=half)el.scrollLeft-=half;
      else if(direction<0&&el.scrollLeft<=0)el.scrollLeft+=half;
      requestAnimationFrame(animate);
