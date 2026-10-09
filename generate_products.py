@@ -5,7 +5,7 @@ from urllib.parse import quote
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "products"
 BASE = "https://zbatayoub09-source.github.io/dealzone"
-SKIP_PREFIXES = ("metricool", "malabis rijal", "ملابس رجالية", "ملابس نسائية")
+SKIP_PREFIXES = ("metricool",)
 
 CATEGORY_MAP = {}
 
