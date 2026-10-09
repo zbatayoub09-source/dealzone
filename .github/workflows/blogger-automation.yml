@@ -25,9 +25,9 @@ jobs:
     env:
       BLOGGER_BLOG_ID: "1419305768199826334"
       BLOGGER_BATCH_SIZE: "5"
-      BLOGGER_CLIENT_ID: \${{ secrets.BLOGGER_CLIENT_ID }}
-      BLOGGER_CLIENT_SECRET: \${{ secrets.BLOGGER_CLIENT_SECRET }}
-      BLOGGER_REFRESH_TOKEN: \${{ secrets.BLOGGER_REFRESH_TOKEN }}
+      BLOGGER_CLIENT_ID: ${{ secrets.BLOGGER_CLIENT_ID }}
+      BLOGGER_CLIENT_SECRET: ${{ secrets.BLOGGER_CLIENT_SECRET }}
+      BLOGGER_REFRESH_TOKEN: ${{ secrets.BLOGGER_REFRESH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
