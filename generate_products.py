@@ -64,7 +64,9 @@ def page(row, category, related):
     sales = val(row, "Sales180Day")
     feedback = val(row, "Positive Feedback")
     deal = val(row, "Promotion Url", "Promotion URL", "PromotionUrl")
-    description = title
+    sales_text = (sales + "+ sold in the last 180 days") if sales else ""
+    seo_title = (title[:88] + (" | " + sales + " sold" if sales else "") + " | DealZone")[:120]
+    description = title + ((" Popular choice with " + sales + " sales in the last 180 days.") if sales else "") + ((" Positive feedback: " + feedback + ".") if feedback else "") + " Shop on DealZone."
     page_url = f"{BASE}/{product_path(pid)}"
 
     related_html = "".join(
@@ -79,7 +81,7 @@ def page(row, category, related):
         "@type": "Product",
         "name": title,
         "image": [img] if img else [],
-        "description": description,
+        "description": description[:300],
         "sku": pid,
         "brand": {"@type": "Brand", "name": "DealZone"},
     }
@@ -97,11 +99,11 @@ def page(row, category, related):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{esc(title[:120])} | DealZone</title>
+<title>{esc(seo_title)}</title>
 <meta name="description" content="{esc(description[:155])}">
 <link rel="canonical" href="{BASE}/{product_path(pid)}">
 <meta property="og:type" content="product">
-<meta property="og:title" content="{esc(title[:120])}">
+<meta property="og:title" content="{esc(seo_title)}">
 <meta property="og:description" content="{esc(description[:155])}">
 <meta property="og:url" content="{BASE}/{product_path(pid)}">
 {f'<meta property="og:image" content="{esc(img)}">' if img else ''}
