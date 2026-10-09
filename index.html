@@ -103,10 +103,26 @@ function buildCategorySliders(){
      '<a href="'+esc(slug(x.file.name))+'.html">View all →</a></div></div>'+
      '<div class="slider-track" id="'+id+'">'+cards+'</div></section>';
  }).join('');
- document.querySelectorAll('.slider-track').forEach(function(el){
-   let timer=setInterval(function(){moveSlider(el.id,1)},3500);
-   el.addEventListener('mouseenter',function(){clearInterval(timer)});
-   el.addEventListener('mouseleave',function(){timer=setInterval(function(){moveSlider(el.id,1)},3500)});
+ document.querySelectorAll('.slider-track').forEach(function(el,index){
+   // Duplicate the cards so the row can scroll endlessly without a visible reset.
+   const original=[...el.children];
+   if(!original.length)return;
+   original.forEach(function(card){el.appendChild(card.cloneNode(true))});
+   const halfWidth=()=>el.scrollWidth/2;
+   const direction=index%2===0?1:-1;
+   if(direction<0)el.scrollLeft=halfWidth();
+   let last=0;
+   function animate(now){
+     if(!last)last=now;
+     const delta=Math.min(now-last,40);
+     last=now;
+     const half=halfWidth();
+     el.scrollLeft+=direction*delta*0.035;
+     if(direction>0&&el.scrollLeft>=half)el.scrollLeft-=half;
+     else if(direction<0&&el.scrollLeft<=0)el.scrollLeft+=half;
+     requestAnimationFrame(animate);
+   }
+   requestAnimationFrame(animate);
  });
 }
 async function load(){try{let r=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/?ref=${BRANCH}`,{cache:'no-store'});if(!r.ok)throw Error('GitHub API '+r.status);let list=await r.json();files=list.filter(x=>x.type==='file'&&/\.csv$/i.test(x.name)&&!/^metricool/i.test(x.name));let good=[];for(const f of files){try{let t=await fetch(f.download_url,{cache:'no-store'}).then(x=>x.text());let rows=parseCSV(t);if(rows.length)good.push({file:f,rows})}catch(e){console.warn(f.name,e)}}files=good;all=good.flatMap(x=>x.rows.map(p=>({...p,__category:nameOf(x.file)})));document.getElementById('status').textContent=`${files.length} categories · ${all.length} products`;document.getElementById('cats').innerHTML=files.map(x=>{let p=x.rows.find(r=>val(r,'Image Url','Image URL','ImageUrl'));let img=val(p||{},'Image Url','Image URL','ImageUrl');return `<a class="market-cat" href="category.html?file=${encodeURIComponent(x.file.name)}"><img src="${esc(img)}" loading="lazy" alt="${esc(nameOf(x.file))}" onerror="this.style.display='none'"><span class="cat-name">${esc(nameOf(x.file))}</span><span class="count">${x.rows.length} products</span></a>`;}).join('');let featured=[...all].sort((a,b)=>parseFloat(val(b,'Discount'))-parseFloat(val(a,'Discount'))).slice(0,20);document.getElementById('products').innerHTML=featured.map(card).join('')||'<div class="empty">No products found.</div>';buildCategorySliders()}catch(e){document.getElementById('status').textContent='Loading error';document.getElementById('cats').innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
