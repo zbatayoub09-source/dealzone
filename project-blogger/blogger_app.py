@@ -157,8 +157,8 @@ class BloggerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Project Blogger | DealZone")
-        self.root.geometry("760x600")
-        self.root.minsize(680, 520)
+        self.root.geometry("780x760")
+        self.root.minsize(700, 680)
         self.blog_var = tk.StringVar()
         self.csv_var = tk.StringVar(value="Mazal ma khtart ta CSV")
         self.mode_var = tk.StringVar(value="draft")
