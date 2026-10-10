@@ -46,15 +46,37 @@ def load_rows(path):
             raise ValueError("CSV ma fihch header row.")
         return list(reader)
 
+def make_seo_description(title, existing=""):
+    existing = clean(existing)
+    if len(existing) >= 80:
+        return existing[:2000]
+    base = f"Discover {title}. Explore key features, product details and available options. Check compatibility, customer reviews, current price and delivery information on the product page before ordering."
+    return base[:2000]
+
+def make_hashtags(title, existing=""):
+    existing = clean(existing)
+    found = re.findall(r"#[A-Za-z0-9_]+", existing)
+    if len(found) >= 3:
+        return " ".join(dict.fromkeys(found))[:500]
+    stop = {"with", "from", "this", "that", "and", "the", "for", "new", "hot", "best", "sale", "set"}
+    words = re.findall(r"[A-Za-z0-9]+", title.lower())
+    tags = []
+    for word in words:
+        if len(word) >= 3 and word not in stop:
+            tag = "#" + word
+            if tag not in tags:
+                tags.append(tag)
+    tags += ["#DealZone", "#OnlineShopping", "#ProductFinds"]
+    return " ".join(tags[:8])
+
 def product_data(row, index):
     title = get_value(row, ["Product Title", "Title", "Product Name", "Name", "Product Desc", "Product Description", "Description", "Product"])
     if not title:
         title = "DealZone product " + str(index)
     title = title[:180]
     description = get_value(row, ["SEO_Description", "SEO Description", "Product Description", "Product Desc", "Description"])
-    if not description or description == title:
-        description = f"Discover {title}. Review the product details, specifications, available options and compatibility before ordering. Check the latest price and offer on the product page."
-    hashtags = get_value(row, ["Hashtags", "SEO_Hashtags", "Tags"])
+    description = make_seo_description(title, description if description != title else "")
+    hashtags = make_hashtags(title, get_value(row, ["Hashtags", "SEO_Hashtags", "Tags"]))
     image = get_value(row, ["Image Url", "Image URL", "Image", "ImageUrl", "Main Image"])
     link = get_value(row, ["Promotion Url", "Promotion URL", "Product Url", "Product URL", "Affiliate Link", "Link", "URL"])
     product_id = get_value(row, ["ProductId", "Product ID", "Item ID", "ID"])
@@ -130,7 +152,10 @@ class BloggerApp:
         outer = ttk.Frame(self.root, padding=18)
         outer.pack(fill="both", expand=True)
         ttk.Label(outer, text="PROJECT BLOGGER", font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        ttk.Label(outer, text="CSV → SEO → Blogger", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 16))
+        ttk.Label(outer, text="CSV  →  SEO Description + Hashtags  →  Blogger", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 16))
+        style = ttk.Style()
+        style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), padding=(14, 9))
+        style.configure("TButton", padding=(8, 5))
 
         top = ttk.Frame(outer)
         top.pack(fill="x", pady=5)
@@ -163,7 +188,7 @@ class BloggerApp:
         ttk.Entry(limits, textvariable=self.limit_var, width=8).pack(side="left", padx=8)
         ttk.Label(limits, text="(start with 5–20 to test)").pack(side="left")
 
-        self.start_btn = ttk.Button(outer, text="5. START BLOGGER", command=self.start_publish)
+        self.start_btn = ttk.Button(outer, text="🚀  START BLOGGER", style="Primary.TButton", command=self.start_publish)
         self.start_btn.pack(anchor="w", pady=(16, 10))
         self.progress = ttk.Progressbar(outer, mode="determinate")
         self.progress.pack(fill="x", pady=3)
@@ -184,7 +209,7 @@ class BloggerApp:
                 raise RuntimeError("Ma ban 7ta blog f had Google account.")
             self.root.after(0, lambda: self._connected(blogs))
         except Exception as e:
-            self.root.after(0, lambda: self._connect_error(str(e)))
+            self.root.after(0, lambda err=str(e): self._connect_error(err))
 
     def _connected(self, blogs):
         global BLOGS
@@ -211,7 +236,7 @@ class BloggerApp:
             if not self.rows:
                 raise ValueError("Had CSV ma fih ta product rows.")
             self.csv_var.set(filename)
-            self.status_var.set(f"CSV ready: {len(self.rows)} products.")
+            self.status_var.set(f"CSV ready: {len(self.rows)} products. SEO descriptions and hashtags will be generated when missing.")
         except Exception as e:
             messagebox.showerror("CSV error", str(e))
 
