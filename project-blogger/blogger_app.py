@@ -6,6 +6,9 @@ import re
 import threading
 import time
 import webbrowser
+import urllib.parse
+import urllib.request
+import urllib.error
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -14,6 +17,7 @@ APP_DIR = Path(__file__).resolve().parent
 CLIENT_FILE = APP_DIR / "client_secret.json"
 TOKEN_FILE = APP_DIR / "blogger_token.json"
 STATE_FILE = APP_DIR / "published_state.json"
+FACEBOOK_CONFIG_FILE = APP_DIR / "facebook_config.json"
 SCOPES = ["https://www.googleapis.com/auth/blogger"]
 CSV_PATH = None
 BLOGS = []
@@ -163,6 +167,10 @@ class BloggerApp:
         self.blog_map = {}
         self.rows = []
         self.connected = False
+        fb_config = self.load_facebook_config()
+        self.facebook_page_id_var = tk.StringVar(value=fb_config.get("page_id", ""))
+        self.facebook_token_var = tk.StringVar(value=fb_config.get("page_access_token", ""))
+        self.facebook_enabled_var = tk.BooleanVar(value=bool(fb_config.get("enabled", False)))
         self.build_ui()
 
     def build_ui(self):
@@ -199,6 +207,16 @@ class BloggerApp:
         ttk.Radiobutton(modes, text="Draft (recommended)", variable=self.mode_var, value="draft").pack(side="left", padx=(0, 16))
         ttk.Radiobutton(modes, text="Publish publicly", variable=self.mode_var, value="publish").pack(side="left")
 
+        ttk.Label(outer, text="5. Optional: share PUBLIC Blogger posts to your Facebook Page").pack(anchor="w", pady=(14, 4))
+        fbrow = ttk.Frame(outer)
+        fbrow.pack(fill="x", pady=2)
+        ttk.Checkbutton(fbrow, text="Share after Blogger publishes", variable=self.facebook_enabled_var).pack(side="left")
+        ttk.Label(fbrow, text="Page ID:").pack(side="left", padx=(10, 4))
+        ttk.Entry(fbrow, textvariable=self.facebook_page_id_var, width=18).pack(side="left")
+        ttk.Label(outer, text="Facebook Page Access Token (kept on this computer only):").pack(anchor="w", pady=(5, 2))
+        ttk.Entry(outer, textvariable=self.facebook_token_var, show="*", width=78).pack(fill="x")
+        ttk.Label(outer, text="Facebook sharing works only for public posts, not Drafts. Add a Page ID and a Page Access Token from Meta; never put them on GitHub.", wraplength=700).pack(anchor="w", pady=(3, 0))
+
         limits = ttk.Frame(outer)
         limits.pack(fill="x", pady=(14, 4))
         ttk.Label(limits, text="Max posts this run:").pack(side="left")
@@ -210,7 +228,50 @@ class BloggerApp:
         self.progress = ttk.Progressbar(outer, mode="determinate")
         self.progress.pack(fill="x", pady=3)
         ttk.Label(outer, textvariable=self.status_var, wraplength=700).pack(anchor="w", pady=(5, 6))
-        ttk.Label(outer, text="Note: CSV and client_secret.json stay on this computer. Original CSV is not changed.", wraplength=700).pack(anchor="w", pady=(8, 0))
+        ttk.Label(outer, text="Note: CSV, Google credentials, and Facebook Page token stay on this computer. Original CSV is not changed.", wraplength=700).pack(anchor="w", pady=(8, 0))
+
+    def load_facebook_config(self):
+        try:
+            return json.loads(FACEBOOK_CONFIG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def save_facebook_config(self):
+        config = {
+            "enabled": bool(self.facebook_enabled_var.get()),
+            "page_id": self.facebook_page_id_var.get().strip(),
+            "page_access_token": self.facebook_token_var.get().strip(),
+        }
+        FACEBOOK_CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def share_to_facebook(self, item, post_url):
+        page_id = self.facebook_page_id_var.get().strip()
+        page_token = self.facebook_token_var.get().strip()
+        if not self.facebook_enabled_var.get():
+            return "disabled"
+        if not page_id or not page_token:
+            raise ValueError("Facebook sharing is enabled, but Page ID or Page Access Token is missing.")
+        message = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}".strip()
+        payload = urllib.parse.urlencode({
+            "message": message[:5000],
+            "link": post_url,
+            "access_token": page_token,
+        }).encode("utf-8")
+        request = urllib.request.Request(
+            f"https://graph.facebook.com/v23.0/{urllib.parse.quote(page_id, safe='')}/feed",
+            data=payload,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace")[:700]
+            raise RuntimeError(f"Facebook API error {e.code}: {detail}") from e
+        if not result.get("id"):
+            raise RuntimeError(f"Facebook did not confirm the post: {result}")
+        return result["id"]
 
     def connect(self):
         self.connect_btn.configure(state="disabled")
@@ -277,6 +338,17 @@ class BloggerApp:
             return
         blog = self.blog_map[blog_key]
         mode = self.mode_var.get()
+        try:
+            self.save_facebook_config()
+        except Exception as e:
+            messagebox.showerror("Facebook settings", f"Could not save Facebook settings locally: {e}")
+            return
+        if self.facebook_enabled_var.get() and mode != "publish":
+            messagebox.showwarning("Facebook sharing", "Facebook share kaykhdem ghir mlli tkhtar Publish publicly. Drafts ma kaytpartagawch.")
+            return
+        if self.facebook_enabled_var.get() and (not self.facebook_page_id_var.get().strip() or not self.facebook_token_var.get().strip()):
+            messagebox.showwarning("Facebook settings", "3ammer Page ID w Page Access Token, ola 7yed check dyal Facebook.")
+            return
         if mode == "publish":
             ok = messagebox.askyesno("Confirm public publishing", f"Ghadi tnشر max {limit} posts مباشرة للعموم f:\n{blog.get('name')}\n\nWash met2akked?")
             if not ok:
@@ -310,10 +382,19 @@ class BloggerApp:
             try:
                 body = {"kind": "blogger#post", "blog": {"id": blog["id"]}, "title": item["title"], "content": make_html(item)}
                 result = SERVICE.posts().insert(blogId=blog["id"], body=body, isDraft=(mode == "draft")).execute()
-                file_state[item["key"]] = {"post_id": result.get("id"), "url": result.get("url"), "mode": mode, "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+                fb_note = ""
+                if mode == "publish" and self.facebook_enabled_var.get():
+                    try:
+                        fb_id = self.share_to_facebook(item, result.get("url", ""))
+                        fb_note = f"Facebook shared: {fb_id}"
+                    except Exception as fb_error:
+                        fb_note = f"Facebook share failed: {str(fb_error)[:500]}"
+                        errors += 1
+                file_state[item["key"]] = {"post_id": result.get("id"), "url": result.get("url"), "mode": mode, "time": time.strftime("%Y-%m-%d %H:%M:%S"), "facebook": fb_note}
                 save_state(state)
                 done += 1
-                self.root.after(0, lambda n=n, total=total, item=item: self._update_progress(n, total, item["title"]))
+                display_title = item["title"] + (f" | {fb_note}" if fb_note else "")
+                self.root.after(0, lambda n=n, total=total, title=display_title: self._update_progress(n, total, title))
             except Exception as e:
                 errors += 1
                 self.root.after(0, lambda msg=str(e), title=item["title"]: self.status_var.set(f"Error on {title[:50]}: {msg[:180]}"))
