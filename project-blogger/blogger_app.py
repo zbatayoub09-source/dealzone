@@ -85,17 +85,34 @@ def product_data(row, index):
     return {"title": title, "description": description, "hashtags": hashtags, "image": image, "link": link, "key": fingerprint}
 
 def make_html(item):
-    parts = [f"<h2>{html.escape(item['title'])}</h2>"]
+    # Blogger post body: readable description, visible hashtags, and a styled CTA button.
+    parts = [
+        f"<h2>{html.escape(item['title'])}</h2>",
+        "<hr>",
+        "<h3>Product Details</h3>",
+        f"<p>{html.escape(item['description'])}</p>",
+    ]
     if item["image"].startswith(("https://", "http://")):
-        parts.append(f'<p><a href="{html.escape(item["link"], quote=True)}"><img src="{html.escape(item["image"], quote=True)}" alt="{html.escape(item["title"], quote=True)}" style="max-width:100%;height:auto"></a></p>' if item["link"] else f'<p><img src="{html.escape(item["image"], quote=True)}" alt="{html.escape(item["title"], quote=True)}" style="max-width:100%;height:auto"></p>')
-    parts.append(f"<p>{html.escape(item['description'])}</p>")
-    if item["hashtags"]:
-        tags = " ".join(t for t in item["hashtags"].split() if t.startswith("#"))
-        if tags:
-            parts.append(f"<p>{html.escape(tags)}</p>")
+        image_html = f'<img src="{html.escape(item["image"], quote=True)}" alt="{html.escape(item["title"], quote=True)}" style="max-width:100%;height:auto;border:0">'
+        if item["link"].startswith(("https://", "http://")):
+            parts.append(f'<p><a href="{html.escape(item["link"], quote=True)}" rel="nofollow sponsored">{image_html}</a></p>')
+        else:
+            parts.append(f"<p>{image_html}</p>")
     if item["link"].startswith(("https://", "http://")):
-        parts.append(f'<p><a href="{html.escape(item["link"], quote=True)}" rel="nofollow sponsored">Check price and details</a></p>')
-    parts.append("<p>Product details and availability may change. Please review the listing before ordering.</p>")
+        parts.append(
+            '<p style="text-align:center;margin:24px 0">'
+            f'<a href="{html.escape(item["link"], quote=True)}" rel="nofollow sponsored" '
+            'style="display:inline-block;background-color:#fe4f4f;color:#ffffff;'
+            'padding:14px 24px;border-radius:6px;text-decoration:none;font-weight:bold;'
+            'font-size:16px;border:1px solid #fe4f4f">'
+            'CHECK PRICE &amp; DETAILS</a></p>'
+        )
+    tags = " ".join(t for t in item["hashtags"].split() if t.startswith("#"))
+    if tags:
+        parts.append("<hr>")
+        parts.append("<p><strong>Hashtags</strong></p>")
+        parts.append(f'<p style="line-height:1.8">{html.escape(tags)}</p>')
+    parts.append("<p><em>Prices, product details and availability may change. Check the seller's listing before ordering.</em></p>")
     return "\n".join(parts)
 
 def auth_service():
