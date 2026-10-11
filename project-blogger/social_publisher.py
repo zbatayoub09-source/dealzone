@@ -182,7 +182,8 @@ class SocialPublisher:
         self.preview = tk.Text(main, height=12, wrap="word", font=("Segoe UI", 9)); self.preview.pack(fill="both", expand=True)
         buttons = ttk.Frame(main); buttons.pack(fill="x", pady=(10,3))
         ttk.Button(buttons, text="Preview first product", command=self.preview_first).pack(side="left")
-        ttk.Button(buttons, text="Generate platform CSV files", command=self.generate).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Publish to Facebook", command=self.publish_facebook).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Generate platform CSV files", command=self.generate).pack(side="left")
         ttk.Label(main, textvariable=self.status, wraplength=850).pack(anchor="w", pady=(5,0))
         ttk.Label(main, text="Facebook: t9der tdkhel Access Token, tloadi pages, tkhtar pages, w tnشر direct. Platforms l-akhra kaywjed lihom CSV. Blogger mab9ach dakhel f had l-version.", wraplength=850).pack(anchor="w", pady=(7,0))
 
@@ -238,6 +239,12 @@ class SocialPublisher:
             self.preview.delete("1.0", "end")
             self.preview.insert("end", f"TITLE\n{item['title']}\n\nSEO DESCRIPTION\n{item['description']}\n\nHASHTAGS\n{item['hashtags']}\n\nIMAGE\n{item['image']}\n\nVIDEO\n{item['video'] or '(ma kaynach Video Url f had row)'}\n\nPRODUCT LINK\n{item['link']}")
         except Exception as e: messagebox.showerror("Preview error", str(e))
+
+    def publish_facebook(self):
+        # Dedicated Facebook action: ensure Facebook is selected, then use the
+        # existing validation, selected-page confirmation, and publishing flow.
+        self.selected["Facebook"].set(True)
+        self.generate()
 
     def generate(self):
         if not self.rows:
