@@ -184,7 +184,7 @@ class SocialPublisher:
         ttk.Button(buttons, text="Preview first product", command=self.preview_first).pack(side="left")
         ttk.Button(buttons, text="Generate platform CSV files", command=self.generate).pack(side="left", padx=8)
         ttk.Label(main, textvariable=self.status, wraplength=850).pack(anchor="w", pady=(5,0))
-        ttk.Label(main, text="Video URL kaytzed f CSV ila kan f source CSV. Had l-app katwjed files; ma katpubliach direct. Blogger mab9ach dakhel f had l-version.", wraplength=850).pack(anchor="w", pady=(7,0))
+        ttk.Label(main, text="Facebook: t9der tdkhel Access Token, tloadi pages, tkhtar pages, w tnشر direct. Platforms l-akhra kaywjed lihom CSV. Blogger mab9ach dakhel f had l-version.", wraplength=850).pack(anchor="w", pady=(7,0))
 
     def load_facebook_pages(self):
         token = self.facebook_token.get().strip()
@@ -209,7 +209,6 @@ class SocialPublisher:
             for page in pages:
                 self.pages_list.insert("end", f"{page.get('name', 'Page')}  |  ID: {page.get('id', '')}")
             self.status.set(f"Facebook: l9ina {len(pages)} pages. Khtar li bghiti.")
-            self.pages_list.selection_set(0, "end")
             messagebox.showinfo("Facebook Pages", f"L9ina {len(pages)} pages. T9der t7edded pages li bghiti mn list.")
         except Exception as e:
             messagebox.showerror("Facebook API error", str(e))
