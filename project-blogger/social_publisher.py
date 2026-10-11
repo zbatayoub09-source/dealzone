@@ -11,7 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 
 APP_DIR = Path(__file__).resolve().parent
 PLATFORMS = [
-    ("Facebook", "Facebook"), ("Instagram", "Instagram"),
+    ("Instagram", "Instagram"),
     ("TikTok", "TikTok"), ("YouTube", "Youtube"),
     ("Pinterest", "Pinterest"), ("Threads", "Threads"),
 ]
@@ -123,7 +123,7 @@ class SocialPublisher:
         ttk.Label(main, text="2. Platforms").pack(anchor="w", pady=(8,3))
         pf = ttk.Frame(main); pf.pack(fill="x")
         for i, (label, _) in enumerate(PLATFORMS):
-            v = tk.BooleanVar(value=label in ("Facebook","Instagram","Pinterest")); self.selected[label] = v
+            v = tk.BooleanVar(value=label in ("Instagram","Pinterest")); self.selected[label] = v
             ttk.Checkbutton(pf, text=label, variable=v).grid(row=i//3, column=i%3, sticky="w", padx=(0,22), pady=2)
         ttk.Checkbutton(main, text="Improve title, SEO description and hashtags with Gemini AI (uses API quota)", variable=self.use_ai).pack(anchor="w", pady=(10,3))
         kr = ttk.Frame(main); kr.pack(fill="x")
