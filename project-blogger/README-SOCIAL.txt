@@ -1,28 +1,25 @@
-DEALZONE SOCIAL PUBLISHER - FIRST CLEAN VERSION
+DEALZONE SOCIAL PUBLISHER
 
-This is a separate app inside project-blogger. It does not replace or edit blogger_app.py or RUN.bat.
+WHAT IS NEW
+- Keeps the AliExpress Video Url field in each platform CSV as "Video Url".
+- Optional Gemini AI mode improves product title, SEO description and hashtags.
+- The Gemini API key is entered in the app and is not saved to a settings file.
+- Blogger files and credentials are not changed by this tool.
 
-START
+RUN
 1. Extract the repository ZIP.
-2. Open project-blogger.
+2. Open the project-blogger folder.
 3. Double-click RUN_SOCIAL.bat.
-4. Choose an AliExpress product CSV.
-5. Select the platforms for which you want prepared CSV files.
-6. Click "Generate platform CSV files".
-7. Files are written to project-blogger/output by default.
+4. Choose your AliExpress CSV.
+5. If you want AI copy, tick "Improve ... with Gemini AI" and enter your Gemini API key.
+6. Choose platforms, set product limit, then click Generate platform CSV files.
+7. Output files are in the selected output folder (default: project-blogger\output).
 
-CURRENT CAPABILITIES
-- Reads common AliExpress CSV formats (comma, semicolon, or tab separated).
-- Builds a product title, SEO description, hashtags, image URL, product URL, and a stable deduplication key.
-- Exports a separate CSV for each selected platform.
-- Does not modify the source CSV.
-- Does not publish to accounts yet. Direct publishing needs approved API access, tokens, and platform-specific handling. Never place tokens or client secrets in GitHub.
-- Blogger is intentionally excluded while the blog review is pending.
+VIDEO
+The app copies Video Url from the source CSV into the output CSV. If the source row has no video URL, the output field stays blank. This does not download or upload video files, and the generated CSV files do not automatically publish posts.
 
-This app is isolated in new files:
-social_publisher.py
-RUN_SOCIAL.bat
-requirements-social.txt
-README-SOCIAL.txt
+GEMINI API
+AI use needs a valid Gemini API key and may consume API quota. Do not share your key or commit it to GitHub. If AI mode is off, the app uses a simple local description and hashtags.
 
-Existing Blogger files are left unchanged.
+LIMITATION
+This app prepares CSV files only. Direct posting requires separate official API access, authentication, permissions, and platform-specific media requirements for each social network. Blogger is intentionally not included while the Blogger account review is pending.
