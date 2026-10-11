@@ -5,16 +5,49 @@ import json
 import re
 import urllib.request
 import urllib.error
+import urllib.parse
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_DIR = Path(__file__).resolve().parent
 PLATFORMS = [
+    ("Facebook", "Facebook"),
     ("Instagram", "Instagram"),
     ("TikTok", "TikTok"), ("YouTube", "Youtube"),
     ("Pinterest", "Pinterest"), ("Threads", "Threads"),
 ]
+
+GRAPH_VERSION = "v26.0"
+GRAPH_BASE = f"https://graph.facebook.com/{GRAPH_VERSION}"
+
+def facebook_api(method, endpoint, params):
+    params = dict(params)
+    url = f"{GRAPH_BASE}/{endpoint.lstrip('/')}"
+    if method == "GET":
+        url += "?" + urllib.parse.urlencode(params)
+        request = urllib.request.Request(url, method="GET")
+    else:
+        body = urllib.parse.urlencode(params).encode("utf-8")
+        request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=35) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            data = json.loads(exc.read().decode("utf-8"))
+            err = data.get("error", {})
+            detail = err.get("message", "Facebook API error")
+            code = err.get("code")
+            raise RuntimeError(f"Facebook API ({code}): {detail}")
+        except (ValueError, json.JSONDecodeError):
+            raise RuntimeError(f"Facebook API HTTP error: {exc.code}")
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Ma t9drch tconnecta l-Facebook: {exc.reason}")
+    if isinstance(data, dict) and data.get("error"):
+        err = data["error"]
+        raise RuntimeError(f"Facebook API ({err.get('code')}): {err.get('message', 'Error')}")
+    return data
 
 def clean(value):
     value = html.unescape(str(value or ""))
@@ -110,6 +143,9 @@ class SocialPublisher:
         self.output_dir = tk.StringVar(value=str(APP_DIR / "output"))
         self.use_ai = tk.BooleanVar(value=False)
         self.api_key = tk.StringVar(value="")
+        self.facebook_token = tk.StringVar(value="")
+        self.facebook_pages = []
+        self.pages_list = None
         self.build()
 
     def build(self):
@@ -123,8 +159,15 @@ class SocialPublisher:
         ttk.Label(main, text="2. Platforms").pack(anchor="w", pady=(8,3))
         pf = ttk.Frame(main); pf.pack(fill="x")
         for i, (label, _) in enumerate(PLATFORMS):
-            v = tk.BooleanVar(value=label in ("Instagram","Pinterest")); self.selected[label] = v
+            v = tk.BooleanVar(value=label in ("Facebook", "Instagram", "Pinterest")); self.selected[label] = v
             ttk.Checkbutton(pf, text=label, variable=v).grid(row=i//3, column=i%3, sticky="w", padx=(0,22), pady=2)
+        ttk.Label(main, text="Facebook: Access Token dyal user (ma kayt7fedch)").pack(anchor="w", pady=(10,3))
+        fr = ttk.Frame(main); fr.pack(fill="x")
+        ttk.Entry(fr, textvariable=self.facebook_token, show="*").pack(side="left", fill="x", expand=True)
+        ttk.Button(fr, text="Load Facebook Pages", command=self.load_facebook_pages).pack(side="left", padx=(8,0))
+        ttk.Label(main, text="Khtar page wa7da ola kter (Ctrl/Shift bach tkhtar kter):").pack(anchor="w", pady=(6,2))
+        self.pages_list = tk.Listbox(main, height=4, selectmode=tk.EXTENDED, exportselection=False)
+        self.pages_list.pack(fill="x")
         ttk.Checkbutton(main, text="Improve title, SEO description and hashtags with Gemini AI (uses API quota)", variable=self.use_ai).pack(anchor="w", pady=(10,3))
         kr = ttk.Frame(main); kr.pack(fill="x")
         ttk.Label(kr, text="Gemini API key (ma kayt7fedch f file):").pack(side="left")
@@ -142,6 +185,34 @@ class SocialPublisher:
         ttk.Button(buttons, text="Generate platform CSV files", command=self.generate).pack(side="left", padx=8)
         ttk.Label(main, textvariable=self.status, wraplength=850).pack(anchor="w", pady=(5,0))
         ttk.Label(main, text="Video URL kaytzed f CSV ila kan f source CSV. Had l-app katwjed files; ma katpubliach direct. Blogger mab9ach dakhel f had l-version.", wraplength=850).pack(anchor="w", pady=(7,0))
+
+    def load_facebook_pages(self):
+        token = self.facebook_token.get().strip()
+        if not token:
+            messagebox.showwarning("Facebook Access Token", "Dkhel Access Token lwl.")
+            return
+        try:
+            data = facebook_api("GET", "me/accounts", {
+                "fields": "id,name,access_token,tasks", "limit": "500", "access_token": token
+            })
+            pages = data.get("data", [])
+            if not pages:
+                self.facebook_pages = []
+                self.pages_list.delete(0, "end")
+                messagebox.showwarning(
+                    "Ma ban ta page",
+                    "Facebook ma rje3 ta page. T2ekked belli had token user access token fih pages_show_list, w 3andek access l-pages."
+                )
+                return
+            self.facebook_pages = pages
+            self.pages_list.delete(0, "end")
+            for page in pages:
+                self.pages_list.insert("end", f"{page.get('name', 'Page')}  |  ID: {page.get('id', '')}")
+            self.status.set(f"Facebook: l9ina {len(pages)} pages. Khtar li bghiti.")
+            self.pages_list.selection_set(0, "end")
+            messagebox.showinfo("Facebook Pages", f"L9ina {len(pages)} pages. T9der t7edded pages li bghiti mn list.")
+        except Exception as e:
+            messagebox.showerror("Facebook API error", str(e))
 
     def choose_csv(self):
         path = filedialog.askopenfilename(title="Choose AliExpress CSV", filetypes=[("CSV files","*.csv"),("All files","*.*")])
@@ -175,6 +246,16 @@ class SocialPublisher:
         platforms = [p for p, v in self.selected.items() if v.get()]
         if not platforms:
             messagebox.showwarning("Choose platform", "Khtar platform wa7da 3la l-a9al."); return
+        selected_pages = []
+        if "Facebook" in platforms:
+            if not self.facebook_token.get().strip():
+                messagebox.showwarning("Facebook Token", "Dkhel Access Token w klik Load Facebook Pages.")
+                return
+            chosen = list(self.pages_list.curselection()) if self.pages_list else []
+            if not chosen:
+                messagebox.showwarning("Facebook Pages", "Klik Load Facebook Pages, w khtar page wa7da 3la l-a9al.")
+                return
+            selected_pages = [self.facebook_pages[i] for i in chosen]
         try:
             limit = int(self.limit.get())
             if limit < 1: raise ValueError()
@@ -183,6 +264,12 @@ class SocialPublisher:
         api_key = self.api_key.get().strip() if self.use_ai.get() else ""
         if self.use_ai.get() and not api_key:
             messagebox.showerror("Gemini API key", "Dkhel Gemini API key ola 7yed l-option AI."); return
+        if "Facebook" in platforms:
+            total_posts = min(limit, len(self.rows)) * len(selected_pages)
+            names = "\n".join(p.get("name", "Page") for p in selected_pages)
+            if not messagebox.askyesno("Confirm Facebook publishing",
+                f"Ghadi tnشر {min(limit, len(self.rows))} products f {len(selected_pages)} page(s) = {total_posts} posts.\n\nPages:\n{names}\n\nBghiti tkمل?"):
+                return
         try:
             out = Path(self.output_dir.get()).expanduser(); out.mkdir(parents=True, exist_ok=True)
             selected_rows = self.rows[:limit]; prepared = []
@@ -190,6 +277,27 @@ class SocialPublisher:
                 self.status.set(f"Kanwjed product {i}/{len(selected_rows)}...")
                 self.root.update_idletasks()
                 prepared.append((row, make_item(row, i, api_key)))
+            fb_success = 0
+            fb_errors = []
+            if "Facebook" in platforms:
+                for page in selected_pages:
+                    page_id = str(page.get("id", ""))
+                    page_token = page.get("access_token", "")
+                    if not page_token:
+                        fb_errors.append(f"{page.get('name', page_id)}: page token ma kaynach")
+                        continue
+                    for i, (row, item) in enumerate(prepared, 1):
+                        caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
+                        params = {"message": caption, "access_token": page_token}
+                        if item["link"]:
+                            params["link"] = item["link"]
+                        try:
+                            facebook_api("POST", f"{page_id}/feed", params)
+                            fb_success += 1
+                        except Exception as exc:
+                            fb_errors.append(f"{page.get('name', page_id)} / product {i}: {exc}")
+                        self.status.set(f"Facebook: {fb_success}/{len(prepared) * len(selected_pages)} posts...")
+                        self.root.update_idletasks()
             made = []
             headers = ["Platform","ProductId","Title","Text","Description","Hashtags","Image Url","Video Url","Promotion Url","Deduplication Key"]
             for platform in platforms:
@@ -203,8 +311,14 @@ class SocialPublisher:
                         "Promotion Url": item["link"], "Deduplication Key": item["key"],
                     })
                 dest = out / f"{platform.lower()}_ready.csv"; write_csv(dest, result, headers); made.append(str(dest))
-            self.status.set(f"Saliw {len(selected_rows)} products f {len(platforms)} platform files.")
-            messagebox.showinfo("Done", "Tوجدات الملفات:\n\n" + "\n".join(made) + "\n\nVideo Url tzad ila kan f CSV l-asli. Hadi CSV export machi direct publishing.")
+            self.status.set(f"Saliw CSV files. Facebook posts: {fb_success} success, {len(fb_errors)} errors.")
+            summary = "Tوجدات CSV files:\n\n" + "\n".join(made)
+            if "Facebook" in platforms:
+                summary += f"\n\nFacebook: {fb_success} posts successful; {len(fb_errors)} errors."
+                if fb_errors:
+                    summary += "\n\nFirst errors:\n" + "\n".join(fb_errors[:5])
+            summary += "\n\nToken ma t7fedch f file."
+            messagebox.showinfo("Done", summary)
         except Exception as e:
             messagebox.showerror("Export error", str(e))
             self.status.set("Wa9e3 error f generation.")
