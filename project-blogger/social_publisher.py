@@ -287,11 +287,25 @@ class SocialPublisher:
                         continue
                     for i, (row, item) in enumerate(prepared, 1):
                         caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
-                        params = {"message": caption, "access_token": page_token}
-                        if item["link"]:
-                            params["link"] = item["link"]
                         try:
-                            facebook_api("POST", f"{page_id}/feed", params)
+                            image_url = str(item.get("image", "") or "").strip()
+                            if image_url.startswith(("https://", "http://")):
+                                # Publish the product image as a real Facebook Page photo.
+                                # Keep the product/promotion URL in the caption so buyers can open it.
+                                photo_caption = caption
+                                if item.get("link"):
+                                    photo_caption += "\\n\\nShop link: " + item["link"]
+                                facebook_api("POST", f"{page_id}/photos", {
+                                    "url": image_url,
+                                    "caption": photo_caption,
+                                    "access_token": page_token,
+                                })
+                            else:
+                                # If the CSV has no usable image URL, publish a link/text post.
+                                params = {"message": caption, "access_token": page_token}
+                                if item.get("link"):
+                                    params["link"] = item["link"]
+                                facebook_api("POST", f"{page_id}/feed", params)
                             fb_success += 1
                         except Exception as exc:
                             fb_errors.append(f"{page.get('name', page_id)} / product {i}: {exc}")
