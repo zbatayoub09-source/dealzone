@@ -131,6 +131,19 @@ def write_csv(path, rows, headers):
         writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
         writer.writeheader(); writer.writerows(rows)
 
+def load_facebook_checkpoint(path):
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {"published": {}}
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {"published": {}}
+
+def save_facebook_checkpoint(path, state):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(path.suffix + ".tmp")
+    temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.replace(path)
+
 class SocialPublisher:
     def __init__(self, root):
         self.root = root
@@ -270,12 +283,6 @@ class SocialPublisher:
         api_key = self.api_key.get().strip() if self.use_ai.get() else ""
         if self.use_ai.get() and not api_key:
             messagebox.showerror("Gemini API key", "Dkhel Gemini API key ola 7yed l-option AI."); return
-        if "Facebook" in platforms:
-            total_posts = min(limit, len(self.rows)) * len(selected_pages)
-            names = "\n".join(p.get("name", "Page") for p in selected_pages)
-            if not messagebox.askyesno("Confirm Facebook publishing",
-                f"Ghadi tnشر {min(limit, len(self.rows))} products f {len(selected_pages)} page(s) = {total_posts} posts.\n\nPages:\n{names}\n\nBghiti tkمل?"):
-                return
         try:
             out = Path(self.output_dir.get()).expanduser(); out.mkdir(parents=True, exist_ok=True)
             selected_rows = self.rows[:limit]; prepared = []
@@ -283,16 +290,39 @@ class SocialPublisher:
                 self.status.set(f"Kanwjed product {i}/{len(selected_rows)}...")
                 self.root.update_idletasks()
                 prepared.append((row, make_item(row, i, api_key)))
-            fb_success = 0
-            fb_errors = []
+            checkpoint_path = out / "facebook_checkpoint.json"
+            checkpoint = load_facebook_checkpoint(checkpoint_path)
+            published = checkpoint.setdefault("published", {})
+            pending_posts = 0
             if "Facebook" in platforms:
                 for page in selected_pages:
                     page_id = str(page.get("id", ""))
+                    for row, item in prepared:
+                        if not published.get(page_id, {}).get(item["key"]):
+                            pending_posts += 1
+                if pending_posts == 0:
+                    messagebox.showinfo("Facebook checkpoint", "Had products kamlin tsb9o tnchro f had pages. Ma ghadi n3awd n نشر حتى post.")
+                else:
+                    names = "\n".join(p.get("name", "Page") for p in selected_pages)
+                    if not messagebox.askyesno("Confirm Facebook publishing",
+                        f"Ghadi ynشر ghir {pending_posts} new posts (duplicates skipped).\n\nPages:\n{names}\n\nBghiti tkمل?"):
+                        return
+            fb_success = 0
+            fb_skipped = 0
+            fb_errors = []
+            if "Facebook" in platforms and pending_posts > 0:
+                for page in selected_pages:
+                    page_id = str(page.get("id", ""))
                     page_token = page.get("access_token", "")
+                    page_name = page.get("name", page_id)
                     if not page_token:
-                        fb_errors.append(f"{page.get('name', page_id)}: page token ma kaynach")
+                        fb_errors.append(f"{page_name}: page token ma kaynach")
                         continue
+                    page_published = published.setdefault(page_id, {})
                     for i, (row, item) in enumerate(prepared, 1):
+                        if page_published.get(item["key"]):
+                            fb_skipped += 1
+                            continue
                         caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
                         try:
                             image_url = str(item.get("image", "") or "").strip()
@@ -314,6 +344,12 @@ class SocialPublisher:
                                     params["link"] = item["link"]
                                 facebook_api("POST", f"{page_id}/feed", params)
                             fb_success += 1
+                            page_published[item["key"]] = {
+                                "product_id": field(row, ["ProductId", "Product ID", "Item ID", "ID"]),
+                                "title": item["title"],
+                                "post_key": item["key"],
+                            }
+                            save_facebook_checkpoint(checkpoint_path, checkpoint)
                         except Exception as exc:
                             fb_errors.append(f"{page.get('name', page_id)} / product {i}: {exc}")
                         self.status.set(f"Facebook: {fb_success}/{len(prepared) * len(selected_pages)} posts...")
@@ -331,13 +367,13 @@ class SocialPublisher:
                         "Promotion Url": item["link"], "Deduplication Key": item["key"],
                     })
                 dest = out / f"{platform.lower()}_ready.csv"; write_csv(dest, result, headers); made.append(str(dest))
-            self.status.set(f"Saliw CSV files. Facebook posts: {fb_success} success, {len(fb_errors)} errors.")
+            self.status.set(f"Saliw CSV files. Facebook posts: {fb_success} success, {fb_skipped} duplicates skipped, {len(fb_errors)} errors.")
             summary = "Tوجدات CSV files:\n\n" + "\n".join(made)
             if "Facebook" in platforms:
-                summary += f"\n\nFacebook: {fb_success} posts successful; {len(fb_errors)} errors."
+                summary += f"\n\nFacebook: {fb_success} posts successful; {fb_skipped} duplicates skipped; {len(fb_errors)} errors.\nCheckpoint: {checkpoint_path}"
                 if fb_errors:
                     summary += "\n\nFirst errors:\n" + "\n".join(fb_errors[:5])
-            summary += "\n\nToken ma t7fedch f file."
+            summary += "\n\nFacebook checkpoint kayt7fed f output/facebook_checkpoint.json. Token ma t7fedch f file."
             messagebox.showinfo("Done", summary)
         except Exception as e:
             messagebox.showerror("Export error", str(e))
