@@ -157,6 +157,7 @@ class SocialPublisher:
         self.use_ai = tk.BooleanVar(value=False)
         self.api_key = tk.StringVar(value="")
         self.facebook_token = tk.StringVar(value="")
+        self.facebook_page_id = tk.StringVar(value="")
         self.facebook_pages = []
         self.pages_list = None
         self.build()
@@ -178,7 +179,11 @@ class SocialPublisher:
         fr = ttk.Frame(main); fr.pack(fill="x")
         ttk.Entry(fr, textvariable=self.facebook_token, show="*").pack(side="left", fill="x", expand=True)
         ttk.Button(fr, text="Load Facebook Pages", command=self.load_facebook_pages).pack(side="left", padx=(8,0))
-        ttk.Label(main, text="Khtar page wa7da ola kter (Ctrl/Shift bach tkhtar kter):").pack(anchor="w", pady=(6,2))
+        ttk.Label(main, text="Paste Facebook Page ID or Facebook Page link, then click Select Page:").pack(anchor="w", pady=(6,2))
+        idrow = ttk.Frame(main); idrow.pack(fill="x", pady=(0,4))
+        ttk.Entry(idrow, textvariable=self.facebook_page_id).pack(side="left", fill="x", expand=True)
+        ttk.Button(idrow, text="Select Page by ID/link", command=self.select_facebook_page_by_id).pack(side="left", padx=(8,0))
+        ttk.Label(main, text="Or select one or more loaded Pages below (Ctrl/Shift for multiple):").pack(anchor="w", pady=(6,2))
         self.pages_list = tk.Listbox(main, height=4, selectmode=tk.EXTENDED, exportselection=False)
         self.pages_list.pack(fill="x")
         ttk.Checkbutton(main, text="Improve title, SEO description and hashtags with Gemini AI (uses API quota)", variable=self.use_ai).pack(anchor="w", pady=(10,3))
@@ -235,6 +240,25 @@ class SocialPublisher:
             messagebox.showinfo("Facebook Pages", f"L9ina {len(pages)} pages. T9der t7edded pages li bghiti mn list.")
         except Exception as e:
             messagebox.showerror("Facebook API error", str(e))
+
+    def select_facebook_page_by_id(self):
+        raw = self.facebook_page_id.get().strip()
+        if not raw:
+            messagebox.showwarning("Facebook Page ID", "Paste Page ID or Facebook Page link first.")
+            return
+        match = re.search(r"(?:[?&]id=|/pages/[^/?#]+/|/)([0-9]{6,})(?:[/?#&]|$)", raw)
+        page_id = raw if raw.isdigit() else (match.group(1) if match else "")
+        if not page_id:
+            messagebox.showerror("Facebook Page ID", "Ma qdrtch nخرج Page ID men had lien. Paste numeric Page ID (ra9m) li f lien.")
+            return
+        for i, page in enumerate(self.facebook_pages):
+            if str(page.get("id", "")) == page_id and page.get("access_token"):
+                self.pages_list.selection_clear(0, "end")
+                self.pages_list.selection_set(i)
+                self.pages_list.see(i)
+                self.status.set("Facebook Page selected: " + str(page.get("name", page_id)) + " (" + page_id + ")")
+                return
+        messagebox.showerror("Page not available", "Had Page ID ma kaynach f pages li rje3hom token. Klik Load Facebook Pages b token li 3ando access l had Page, w 3awed jرب.")
 
     def choose_csv(self):
         path = filedialog.askopenfilename(title="Choose AliExpress CSV", filetypes=[("CSV files","*.csv"),("All files","*.*")])
