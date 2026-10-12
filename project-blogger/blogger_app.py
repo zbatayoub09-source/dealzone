@@ -169,6 +169,7 @@ class BloggerApp:
         self.connected = False
         fb_config = self.load_facebook_config()
         self.facebook_user_token_var = tk.StringVar(value="")
+        self.facebook_page_id_var = tk.StringVar(value="")
         self.facebook_pages = []
         self.facebook_enabled_var = tk.BooleanVar(value=bool(fb_config.get("enabled", False)))
         self.build_ui()
@@ -215,7 +216,11 @@ class BloggerApp:
         tokenrow = ttk.Frame(outer); tokenrow.pack(fill="x")
         ttk.Entry(tokenrow, textvariable=self.facebook_user_token_var, show="*").pack(side="left", fill="x", expand=True)
         ttk.Button(tokenrow, text="Load all Facebook Pages", command=self.load_facebook_pages).pack(side="left", padx=(8, 0))
-        ttk.Label(outer, text="Choose one or more Pages (Ctrl/Shift to select multiple):").pack(anchor="w", pady=(5, 2))
+        ttk.Label(outer, text="Paste Facebook Page ID or Facebook Page link, then click Select Page:").pack(anchor="w", pady=(5, 2))
+        manual_page_row = ttk.Frame(outer); manual_page_row.pack(fill="x", pady=(0, 4))
+        ttk.Entry(manual_page_row, textvariable=self.facebook_page_id_var).pack(side="left", fill="x", expand=True)
+        ttk.Button(manual_page_row, text="Select Page by ID/link", command=self.select_facebook_page_by_id).pack(side="left", padx=(8, 0))
+        ttk.Label(outer, text="Or select one or more loaded Pages below (Ctrl/Shift for multiple):").pack(anchor="w", pady=(5, 2))
         self.facebook_pages_list = tk.Listbox(outer, height=4, selectmode=tk.EXTENDED, exportselection=False)
         self.facebook_pages_list.pack(fill="x")
         ttk.Label(outer, text="Only PUBLIC Blogger posts are shared. Pages must be visible to your token and allow publishing. Tokens are not uploaded to GitHub.", wraplength=700).pack(anchor="w", pady=(3, 0))
@@ -285,6 +290,25 @@ class BloggerApp:
                 messagebox.showinfo("Facebook Pages", f"L9ina {len(self.facebook_pages)} Pages. Khtar li bghiti.")
         except Exception as e:
             messagebox.showerror("Facebook error", str(e))
+
+    def select_facebook_page_by_id(self):
+        raw = self.facebook_page_id_var.get().strip()
+        if not raw:
+            messagebox.showwarning("Facebook Page ID", "Paste Page ID or Facebook Page link first.")
+            return
+        match = re.search(r"(?:[?&]id=|/pages/[^/?#]+/|/)([0-9]{6,})(?:[/?#&]|$)", raw)
+        page_id = raw if raw.isdigit() else (match.group(1) if match else "")
+        if not page_id:
+            messagebox.showerror("Facebook Page ID", "Ma qdrtch nخرج Page ID men had lien. Paste numeric Page ID (ra9m) li f lien.")
+            return
+        for i, page in enumerate(self.facebook_pages):
+            if str(page.get("id", "")) == page_id and page.get("access_token"):
+                self.facebook_pages_list.selection_clear(0, "end")
+                self.facebook_pages_list.selection_set(i)
+                self.facebook_pages_list.see(i)
+                self.status_var.set("Facebook Page selected: " + str(page.get("name", page_id)) + " (" + page_id + ")")
+                return
+        messagebox.showerror("Page not available", "Had Page ID ma kaynach f pages li rje3hom token. Klik Load all Facebook Pages b token li 3ando access l had Page, w 3awed jرب.")
 
     def selected_facebook_pages(self):
         if not hasattr(self, "facebook_pages_list"):
