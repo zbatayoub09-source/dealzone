@@ -1,0 +1,1 @@
+Put source CSV files here only after confirming the workflow reads this folder. The existing Generate SEO with Gemini workflow currently expects a CSV path such as Jewelry.csv in the repository root, so do not assume files in this folder are picked up automatically. Never upload private credentials or tokens.
