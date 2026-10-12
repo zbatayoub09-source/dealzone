@@ -206,10 +206,19 @@ class SocialPublisher:
             messagebox.showwarning("Facebook Access Token", "Dkhel Access Token lwl.")
             return
         try:
-            data = facebook_api("GET", "me/accounts", {
-                "fields": "id,name,access_token,tasks", "limit": "500", "access_token": token
-            })
-            pages = data.get("data", [])
+            pages = []
+            after = None
+            while True:
+                params = {"fields": "id,name,access_token,tasks", "limit": "100", "access_token": token}
+                if after:
+                    params["after"] = after
+                data = facebook_api("GET", "me/accounts", params)
+                pages.extend(data.get("data", []))
+                after = (data.get("paging", {}).get("cursors", {}) or {}).get("after")
+                if not after or not data.get("data"):
+                    break
+            # Deduplicate pages if Graph API repeats an item between pages.
+            pages = list({str(p.get("id")): p for p in pages if p.get("id")}.values())
             if not pages:
                 self.facebook_pages = []
                 self.pages_list.delete(0, "end")
