@@ -1,0 +1,1 @@
+YouTube automation is not yet configured in this folder. Before enabling GitHub Actions, move/rebuild the publisher code, define how video files are provided, and persist checkpoint/status data safely. Never commit youtube_token.json, client secrets, or API credentials.
