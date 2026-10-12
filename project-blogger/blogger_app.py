@@ -281,10 +281,19 @@ class BloggerApp:
     def _connect_worker(self):
         try:
             service = auth_service()
-            result = service.blogs().listByUser(userId="self").execute()
-            blogs = result.get("items", [])
+            blogs = []
+            page_token = None
+            while True:
+                params = {"userId": "self", "maxResults": 500}
+                if page_token:
+                    params["pageToken"] = page_token
+                result = service.blogs().listByUser(**params).execute()
+                blogs.extend(result.get("items", []))
+                page_token = result.get("nextPageToken")
+                if not page_token:
+                    break
             if not blogs:
-                raise RuntimeError("Ma ban 7ta blog f had Google account.")
+                raise RuntimeError("Ma ban 7ta blog f had Google account. T2ekked belli dkhleti b nafs Google account li fih blogs.")
             self.root.after(0, lambda: self._connected(blogs))
         except Exception as e:
             self.root.after(0, lambda err=str(e): self._connect_error(err))
