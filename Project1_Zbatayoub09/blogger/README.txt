@@ -1,0 +1,1 @@
+Blogger documentation currently lives at the repository root in README-blogger-automation.md and the desktop app is in project-blogger/. The desktop app needs local OAuth setup and is not automatically run by GitHub Actions. Never upload client_secret.json or blogger_token.json.
