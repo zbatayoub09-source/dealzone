@@ -258,7 +258,24 @@ class SocialPublisher:
                 self.pages_list.see(i)
                 self.status.set("Facebook Page selected: " + str(page.get("name", page_id)) + " (" + page_id + ")")
                 return
-        messagebox.showerror("Page not available", "Had Page ID ma kaynach f pages li rje3hom token. Klik Load Facebook Pages b token li 3ando access l had Page, w 3awed jرب.")
+        # Try a direct Page lookup when the page is not in the /me/accounts list.
+        try:
+            page = facebook_api("GET", page_id, {
+                "fields": "id,name,access_token,tasks",
+                "access_token": self.facebook_token.get().strip(),
+            })
+            if page.get("id") and page.get("access_token"):
+                self.facebook_pages.append(page)
+                i = len(self.facebook_pages) - 1
+                self.pages_list.insert("end", str(page.get("name", "Page")) + "  |  ID: " + str(page.get("id")))
+                self.pages_list.selection_clear(0, "end")
+                self.pages_list.selection_set(i)
+                self.pages_list.see(i)
+                self.status.set("Facebook Page selected: " + str(page.get("name", page_id)) + " (" + page_id + ")")
+                return
+        except Exception:
+            pass
+        messagebox.showerror("Page not available", "Facebook ma rje3ch Page Access Token l had ID. T2ekked belli user token 3ando access l Page w permissions dyal publishing. Ma ymkench tnشر b ID bo7do bla Page Access Token.")
 
     def choose_csv(self):
         path = filedialog.askopenfilename(title="Choose AliExpress CSV", filetypes=[("CSV files","*.csv"),("All files","*.*")])
