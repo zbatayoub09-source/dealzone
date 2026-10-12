@@ -1,0 +1,1 @@
+Use the GitHub Actions run summary and downloadable workflow artifacts for logs. Avoid committing tokens, private product data, or large temporary video files.
