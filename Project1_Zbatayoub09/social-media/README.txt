@@ -1,0 +1,1 @@
+Social media automation is not yet configured in this folder. Each platform needs a supported API, permissions, secrets, and per-platform success/failure tracking. Do not assume one YouTube upload automatically posts to other platforms.
