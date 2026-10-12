@@ -240,41 +240,87 @@ class BloggerApp:
             return {}
 
     def save_facebook_config(self):
-        config = {
-            "enabled": bool(self.facebook_enabled_var.get()),
-            "page_id": self.facebook_page_id_var.get().strip(),
-            "page_access_token": self.facebook_token_var.get().strip(),
-        }
+        # OAuth tokens are intentionally not saved in this settings file.
+        selected = self.selected_facebook_pages()
+        config = {"enabled": bool(self.facebook_enabled_var.get()),
+                  "page_ids": [str(p.get("id", "")) for p in selected]}
         FACEBOOK_CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    def load_facebook_pages(self):
+        token = self.facebook_user_token_var.get().strip()
+        if not token:
+            messagebox.showwarning("Facebook token", "Dkhel User Access Token lwl.")
+            return
+        try:
+            pages, after = [], None
+            while True:
+                params = {"fields": "id,name,access_token,tasks", "limit": "100", "access_token": token}
+                if after:
+                    params["after"] = after
+                url = "https://graph.facebook.com/v26.0/me/accounts?" + urllib.parse.urlencode(params)
+                request = urllib.request.Request(url, method="GET")
+                with urllib.request.urlopen(request, timeout=35) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                if data.get("error"):
+                    raise RuntimeError(data["error"].get("message", "Facebook API error"))
+                pages.extend(data.get("data", []))
+                after = (data.get("paging", {}).get("cursors", {}) or {}).get("after")
+                if not after or not data.get("data"):
+                    break
+            unique = {}
+            for page in pages:
+                if page.get("id") and page.get("access_token"):
+                    unique[str(page["id"])] = page
+            self.facebook_pages = list(unique.values())
+            self.facebook_pages_list.delete(0, "end")
+            old_ids = set(str(x) for x in self.load_facebook_config().get("page_ids", []))
+            for page in self.facebook_pages:
+                self.facebook_pages_list.insert("end", f"{page.get('name', 'Page')} | ID: {page.get('id', '')}")
+                if str(page.get("id")) in old_ids:
+                    self.facebook_pages_list.selection_set("end")
+            self.status_var.set(f"Facebook: l9ina {len(self.facebook_pages)} Pages.")
+            if not self.facebook_pages:
+                messagebox.showwarning("No Pages", "Ma ban ta Page. T2ekked men permissions dyal token w access dyalek l-Pages.")
+            else:
+                messagebox.showinfo("Facebook Pages", f"L9ina {len(self.facebook_pages)} Pages. Khtar li bghiti.")
+        except Exception as e:
+            messagebox.showerror("Facebook error", str(e))
+
+    def selected_facebook_pages(self):
+        if not hasattr(self, "facebook_pages_list"):
+            return []
+        return [self.facebook_pages[i] for i in self.facebook_pages_list.curselection()
+                if 0 <= i < len(self.facebook_pages)]
+
     def share_to_facebook(self, item, post_url):
-        page_id = self.facebook_page_id_var.get().strip()
-        page_token = self.facebook_token_var.get().strip()
         if not self.facebook_enabled_var.get():
             return "disabled"
-        if not page_id or not page_token:
-            raise ValueError("Facebook sharing is enabled, but Page ID or Page Access Token is missing.")
-        message = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}".strip()
-        payload = urllib.parse.urlencode({
-            "message": message[:5000],
-            "link": post_url,
-            "access_token": page_token,
-        }).encode("utf-8")
-        request = urllib.request.Request(
-            f"https://graph.facebook.com/v23.0/{urllib.parse.quote(page_id, safe='')}/feed",
-            data=payload,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                result = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", errors="replace")[:700]
-            raise RuntimeError(f"Facebook API error {e.code}: {detail}") from e
-        if not result.get("id"):
-            raise RuntimeError(f"Facebook did not confirm the post: {result}")
-        return result["id"]
+        pages = self.selected_facebook_pages()
+        if not pages:
+            raise ValueError("Facebook sharing enabled, but no Pages selected. Load Facebook Pages and select at least one.")
+        message = f"{item['title']}\\n\\n{item['description']}\\n\\n{item['hashtags']}".strip()
+        posted, errors = [], []
+        for page in pages:
+            page_id = str(page.get("id", ""))
+            page_token = str(page.get("access_token", ""))
+            payload = urllib.parse.urlencode({
+                "message": message[:5000], "link": post_url, "access_token": page_token,
+            }).encode("utf-8")
+            request = urllib.request.Request(
+                f"https://graph.facebook.com/v26.0/{urllib.parse.quote(page_id, safe='')}/feed",
+                data=payload, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+            try:
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+                if result.get("id"):
+                    posted.append(f"{page.get('name', page_id)}: {result['id']}")
+                else:
+                    errors.append(f"{page.get('name', page_id)}: Facebook did not return a post ID")
+            except Exception as e:
+                errors.append(f"{page.get('name', page_id)}: {str(e)[:240]}")
+        if errors:
+            raise RuntimeError("Posted: " + "; ".join(posted) + " | Failed: " + "; ".join(errors))
+        return "; ".join(posted)
 
     def connect(self):
         self.connect_btn.configure(state="disabled")
@@ -358,8 +404,8 @@ class BloggerApp:
         if self.facebook_enabled_var.get() and mode != "publish":
             messagebox.showwarning("Facebook sharing", "Facebook share kaykhdem ghir mlli tkhtar Publish publicly. Drafts ma kaytpartagawch.")
             return
-        if self.facebook_enabled_var.get() and (not self.facebook_page_id_var.get().strip() or not self.facebook_token_var.get().strip()):
-            messagebox.showwarning("Facebook settings", "3ammer Page ID w Page Access Token, ola 7yed check dyal Facebook.")
+        if self.facebook_enabled_var.get() and not self.selected_facebook_pages():
+            messagebox.showwarning("Facebook settings", "Dkhel User Access Token, klik Load all Facebook Pages, w khtar Page wa7da 3la l-a9al.")
             return
         if mode == "publish":
             ok = messagebox.askyesno("Confirm public publishing", f"Ghadi tnشر max {limit} posts مباشرة للعموم f:\n{blog.get('name')}\n\nWash met2akked?")
