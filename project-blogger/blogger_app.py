@@ -168,8 +168,8 @@ class BloggerApp:
         self.rows = []
         self.connected = False
         fb_config = self.load_facebook_config()
-        self.facebook_page_id_var = tk.StringVar(value=fb_config.get("page_id", ""))
-        self.facebook_token_var = tk.StringVar(value=fb_config.get("page_access_token", ""))
+        self.facebook_user_token_var = tk.StringVar(value="")
+        self.facebook_pages = []
         self.facebook_enabled_var = tk.BooleanVar(value=bool(fb_config.get("enabled", False)))
         self.build_ui()
 
@@ -207,15 +207,18 @@ class BloggerApp:
         ttk.Radiobutton(modes, text="Draft (recommended)", variable=self.mode_var, value="draft").pack(side="left", padx=(0, 16))
         ttk.Radiobutton(modes, text="Publish publicly", variable=self.mode_var, value="publish").pack(side="left")
 
-        ttk.Label(outer, text="5. Optional: share PUBLIC Blogger posts to your Facebook Page").pack(anchor="w", pady=(14, 4))
+        ttk.Label(outer, text="5. Share PUBLIC Blogger posts to Facebook Pages").pack(anchor="w", pady=(14, 4))
         fbrow = ttk.Frame(outer)
         fbrow.pack(fill="x", pady=2)
         ttk.Checkbutton(fbrow, text="Share after Blogger publishes", variable=self.facebook_enabled_var).pack(side="left")
-        ttk.Label(fbrow, text="Page ID:").pack(side="left", padx=(10, 4))
-        ttk.Entry(fbrow, textvariable=self.facebook_page_id_var, width=18).pack(side="left")
-        ttk.Label(outer, text="Facebook Page Access Token (kept on this computer only):").pack(anchor="w", pady=(5, 2))
-        ttk.Entry(outer, textvariable=self.facebook_token_var, show="*", width=78).pack(fill="x")
-        ttk.Label(outer, text="Facebook sharing works only for public posts, not Drafts. Add a Page ID and a Page Access Token from Meta; never put them on GitHub.", wraplength=700).pack(anchor="w", pady=(3, 0))
+        ttk.Label(outer, text="Facebook User Access Token (with pages_show_list and Page posting permissions):").pack(anchor="w", pady=(5, 2))
+        tokenrow = ttk.Frame(outer); tokenrow.pack(fill="x")
+        ttk.Entry(tokenrow, textvariable=self.facebook_user_token_var, show="*").pack(side="left", fill="x", expand=True)
+        ttk.Button(tokenrow, text="Load all Facebook Pages", command=self.load_facebook_pages).pack(side="left", padx=(8, 0))
+        ttk.Label(outer, text="Choose one or more Pages (Ctrl/Shift to select multiple):").pack(anchor="w", pady=(5, 2))
+        self.facebook_pages_list = tk.Listbox(outer, height=4, selectmode=tk.EXTENDED, exportselection=False)
+        self.facebook_pages_list.pack(fill="x")
+        ttk.Label(outer, text="Only PUBLIC Blogger posts are shared. Pages must be visible to your token and allow publishing. Tokens are not uploaded to GitHub.", wraplength=700).pack(anchor="w", pady=(3, 0))
 
         limits = ttk.Frame(outer)
         limits.pack(fill="x", pady=(14, 4))
