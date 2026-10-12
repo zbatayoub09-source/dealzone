@@ -308,7 +308,26 @@ class BloggerApp:
                 self.facebook_pages_list.see(i)
                 self.status_var.set("Facebook Page selected: " + str(page.get("name", page_id)) + " (" + page_id + ")")
                 return
-        messagebox.showerror("Page not available", "Had Page ID ma kaynach f pages li rje3hom token. Klik Load all Facebook Pages b token li 3ando access l had Page, w 3awed jرب.")
+        # If the page did not appear in /me/accounts, try resolving the supplied ID directly.
+        try:
+            token = self.facebook_user_token_var.get().strip()
+            params = urllib.parse.urlencode({"fields": "id,name,access_token,tasks", "access_token": token})
+            url = "https://graph.facebook.com/v26.0/" + urllib.parse.quote(page_id, safe="") + "?" + params
+            request = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(request, timeout=30) as response:
+                page = json.loads(response.read().decode("utf-8"))
+            if page.get("id") and page.get("access_token"):
+                self.facebook_pages.append(page)
+                i = len(self.facebook_pages) - 1
+                self.facebook_pages_list.insert("end", str(page.get("name", "Page")) + " | ID: " + str(page.get("id")))
+                self.facebook_pages_list.selection_clear(0, "end")
+                self.facebook_pages_list.selection_set(i)
+                self.facebook_pages_list.see(i)
+                self.status_var.set("Facebook Page selected: " + str(page.get("name", page_id)) + " (" + page_id + ")")
+                return
+        except Exception:
+            pass
+        messagebox.showerror("Page not available", "Facebook ma rje3ch Page Access Token l had ID. T2ekked belli user token 3ando access l Page w permissions dyal publishing. Ma ymkench n نشر b ID bo7do bla Page Access Token.")
 
     def selected_facebook_pages(self):
         if not hasattr(self, "facebook_pages_list"):
