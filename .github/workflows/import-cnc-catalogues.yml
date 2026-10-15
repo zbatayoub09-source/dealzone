@@ -1,0 +1,33 @@
+name: Import CNC catalogues
+
+on:
+  workflow_dispatch:
+
+jobs:
+  import-cnc:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout DealZone
+        uses: actions/checkout@v4
+
+      - name: Download CNC CSV catalogues
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p cnc-catalogues
+          curl -L --fail 'https://raw.githubusercontent.com/zbatayoub09-source/dealaliexpress/main/ayoub/CNC-Moroccan-Door-Library.csv' -o 'cnc-catalogues/cnc-moroccan-doors.csv'
+          curl -L --fail 'https://raw.githubusercontent.com/zbatayoub09-source/dealaliexpress/main/ayoub/Cach-Ridoux-Maroc.csv' -o 'cnc-catalogues/cnc-cache-rideaux-maroc.csv'
+          curl -L --fail 'https://raw.githubusercontent.com/zbatayoub09-source/dealaliexpress/main/ayoub/creative-Qoran.csv' -o 'cnc-catalogues/cnc-quran-decoration.csv'
+          curl -L --fail 'https://raw.githubusercontent.com/zbatayoub09-source/dealaliexpress/main/ayoub/salone-cnc.csv' -o 'cnc-catalogues/cnc-salon-decoration.csv'
+
+      - name: Commit catalogues
+        shell: bash
+        run: |
+          set -e
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cnc-catalogues/
+          git diff --cached --quiet || git commit -m 'Add CNC catalogues with clean names'
+          git push
