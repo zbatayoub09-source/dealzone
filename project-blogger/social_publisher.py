@@ -254,7 +254,7 @@ class SocialPublisher:
         buttons = ttk.Frame(main); buttons.pack(fill="x", pady=(10,3))
         ttk.Button(buttons, text="Preview first product", command=self.preview_first).pack(side="left")
         ttk.Button(buttons, text="Publish to Facebook", command=self.publish_facebook).pack(side="left", padx=8)
-        ttk.Button(buttons, text="Generate platform CSV files", command=self.generate).pack(side="left")
+        ttk.Button(buttons, text="Publish selected + Generate CSV", command=self.generate).pack(side="left")
         ttk.Label(main, textvariable=self.status, wraplength=850).pack(anchor="w", pady=(5,0))
         ttk.Label(main, text="Facebook: t9der tdkhel Access Token, tloadi pages, tkhtar pages, w tnشر direct. Platforms l-akhra kaywjed lihom CSV. Blogger mab9ach dakhel f had l-version.", wraplength=850).pack(anchor="w", pady=(7,0))
 
@@ -357,10 +357,16 @@ class SocialPublisher:
         except Exception as e: messagebox.showerror("Preview error", str(e))
 
     def publish_facebook(self):
-        # Dedicated Facebook action: ensure Facebook is selected, then use the
-        # existing validation, selected-page confirmation, and publishing flow.
-        self.selected["Facebook"].set(True)
-        self.generate()
+        # This button publishes to Facebook only; it must not accidentally post
+        # to Instagram or Threads just because those boxes are also checked.
+        previous = {name: var.get() for name, var in self.selected.items()}
+        for name, var in self.selected.items():
+            var.set(name == "Facebook")
+        try:
+            self.generate()
+        finally:
+            for name, var in self.selected.items():
+                var.set(previous[name])
 
     def generate(self):
         if not self.rows:
