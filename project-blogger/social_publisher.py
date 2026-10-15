@@ -20,6 +20,52 @@ PLATFORMS = [
 
 GRAPH_VERSION = "v26.0"
 GRAPH_BASE = f"https://graph.facebook.com/{GRAPH_VERSION}"
+THREADS_BASE = "https://graph.threads.net/v1.0"
+
+def threads_api(method, endpoint, params):
+    params = dict(params)
+    url = f"{THREADS_BASE}/{endpoint.lstrip('/')}"
+    if method == "GET":
+        url += "?" + urllib.parse.urlencode(params)
+        request = urllib.request.Request(url, method="GET")
+    else:
+        body = urllib.parse.urlencode(params).encode("utf-8")
+        request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            data = json.loads(exc.read().decode("utf-8"))
+            err = data.get("error", {})
+            raise RuntimeError(f"Threads API ({err.get('code')}): {err.get('message', 'API error')}")
+        except (ValueError, json.JSONDecodeError):
+            raise RuntimeError(f"Threads API HTTP error: {exc.code}")
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Ma t9drch tconnecta b Threads: {exc.reason}")
+    if isinstance(data, dict) and data.get("error"):
+        err = data["error"]
+        raise RuntimeError(f"Threads API ({err.get('code')}): {err.get('message', 'API error')}")
+    return data
+
+def publish_threads(item, user_id, token):
+    caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
+    image_url = str(item.get("image", "") or "").strip()
+    params = {"access_token": token}
+    if image_url.startswith("https://"):
+        params.update({"media_type": "IMAGE", "image_url": image_url, "text": caption[:500]})
+    else:
+        params.update({"media_type": "TEXT", "text": caption[:500]})
+    container = threads_api("POST", f"{user_id}/threads", params)
+    creation_id = container.get("id")
+    if not creation_id:
+        raise RuntimeError("Threads ma rje3ch creation ID.")
+    result = threads_api("POST", f"{user_id}/threads_publish", {
+        "creation_id": creation_id, "access_token": token
+    })
+    if not result.get("id"):
+        raise RuntimeError("Threads ma أكدش النشر.")
+    return result.get("id")
 
 def facebook_api(method, endpoint, params):
     params = dict(params)
@@ -158,6 +204,8 @@ class SocialPublisher:
         self.api_key = tk.StringVar(value="")
         self.facebook_token = tk.StringVar(value="")
         self.facebook_page_id = tk.StringVar(value="")
+        self.threads_user_id = tk.StringVar(value="")
+        self.threads_token = tk.StringVar(value="")
         self.facebook_pages = []
         self.pages_list = None
         self.build()
@@ -186,6 +234,11 @@ class SocialPublisher:
         ttk.Label(main, text="Or select one or more loaded Pages below (Ctrl/Shift for multiple):").pack(anchor="w", pady=(6,2))
         self.pages_list = tk.Listbox(main, height=4, selectmode=tk.EXTENDED, exportselection=False)
         self.pages_list.pack(fill="x")
+        ttk.Label(main, text="Instagram: ID kaytjab automatiquement mn Page Facebook li mkhtara (khass Instagram Professional مربوط بها).", wraplength=850).pack(anchor="w", pady=(5,2))
+        ttk.Label(main, text="Threads User ID:").pack(anchor="w", pady=(6,2))
+        ttk.Entry(main, textvariable=self.threads_user_id).pack(fill="x")
+        ttk.Label(main, text="Threads Access Token (ma kayt7fedch):").pack(anchor="w", pady=(6,2))
+        ttk.Entry(main, textvariable=self.threads_token, show="*").pack(fill="x")
         ttk.Checkbutton(main, text="Improve title, SEO description and hashtags with Gemini AI (uses API quota)", variable=self.use_ai).pack(anchor="w", pady=(10,3))
         kr = ttk.Frame(main); kr.pack(fill="x")
         ttk.Label(kr, text="Gemini API key (ma kayt7fedch f file):").pack(side="left")
@@ -214,7 +267,7 @@ class SocialPublisher:
             pages = []
             after = None
             while True:
-                params = {"fields": "id,name,access_token,tasks", "limit": "100", "access_token": token}
+                params = {"fields": "id,name,access_token,tasks,instagram_business_account{id,username}", "limit": "100", "access_token": token}
                 if after:
                     params["after"] = after
                 data = facebook_api("GET", "me/accounts", params)
@@ -235,7 +288,7 @@ class SocialPublisher:
             self.facebook_pages = pages
             self.pages_list.delete(0, "end")
             for page in pages:
-                self.pages_list.insert("end", f"{page.get('name', 'Page')}  |  ID: {page.get('id', '')}")
+                self.pages_list.insert("end", f"{page.get('name', 'Page')}  |  ID: {page.get('id', '')}  |  Instagram: {(page.get('instagram_business_account') or {}).get('username', 'not linked')}")
             self.status.set(f"Facebook: l9ina {len(pages)} pages. Khtar li bghiti.")
             messagebox.showinfo("Facebook Pages", f"L9ina {len(pages)} pages. T9der t7edded pages li bghiti mn list.")
         except Exception as e:
@@ -261,13 +314,13 @@ class SocialPublisher:
         # Try a direct Page lookup when the page is not in the /me/accounts list.
         try:
             page = facebook_api("GET", page_id, {
-                "fields": "id,name,access_token,tasks",
+                "fields": "id,name,access_token,tasks,instagram_business_account{id,username}",
                 "access_token": self.facebook_token.get().strip(),
             })
             if page.get("id") and page.get("access_token"):
                 self.facebook_pages.append(page)
                 i = len(self.facebook_pages) - 1
-                self.pages_list.insert("end", str(page.get("name", "Page")) + "  |  ID: " + str(page.get("id")))
+                self.pages_list.insert("end", str(page.get("name", "Page")) + "  |  ID: " + str(page.get("id")) + "  |  Instagram: " + str((page.get("instagram_business_account") or {}).get("username", "not linked")) )
                 self.pages_list.selection_clear(0, "end")
                 self.pages_list.selection_set(i)
                 self.pages_list.see(i)
@@ -316,15 +369,19 @@ class SocialPublisher:
         if not platforms:
             messagebox.showwarning("Choose platform", "Khtar platform wa7da 3la l-a9al."); return
         selected_pages = []
-        if "Facebook" in platforms:
+        if "Facebook" in platforms or "Instagram" in platforms:
             if not self.facebook_token.get().strip():
-                messagebox.showwarning("Facebook Token", "Dkhel Access Token w klik Load Facebook Pages.")
+                messagebox.showwarning("Facebook Token", "Dkhel Facebook User Access Token w klik Load Facebook Pages.")
                 return
             chosen = list(self.pages_list.curselection()) if self.pages_list else []
             if not chosen:
-                messagebox.showwarning("Facebook Pages", "Klik Load Facebook Pages, w khtar page wa7da 3la l-a9al.")
+                messagebox.showwarning("Facebook Pages", "Klik Load Facebook Pages, w khtar Page li mربوط بها Instagram.")
                 return
             selected_pages = [self.facebook_pages[i] for i in chosen]
+        if "Threads" in platforms:
+            if not self.threads_user_id.get().strip() or not self.threads_token.get().strip():
+                messagebox.showwarning("Threads credentials", "Dkhel Threads User ID w Threads Access Token.")
+                return
         try:
             limit = int(self.limit.get())
             if limit < 1: raise ValueError()
@@ -360,6 +417,12 @@ class SocialPublisher:
             fb_success = 0
             fb_skipped = 0
             fb_errors = []
+            ig_success = 0
+            ig_skipped = 0
+            ig_errors = []
+            th_success = 0
+            th_skipped = 0
+            th_errors = []
             if "Facebook" in platforms and pending_posts > 0:
                 for page in selected_pages:
                     page_id = str(page.get("id", ""))
@@ -404,6 +467,76 @@ class SocialPublisher:
                             fb_errors.append(f"{page.get('name', page_id)} / product {i}: {exc}")
                         self.status.set(f"Facebook: {fb_success}/{len(prepared) * len(selected_pages)} posts...")
                         self.root.update_idletasks()
+            # Instagram direct publishing using the account linked to each selected Facebook Page.
+            if "Instagram" in platforms:
+                ig_done = checkpoint.setdefault("instagram_published", {})
+                ig_targets = []
+                for page in selected_pages:
+                    ig = page.get("instagram_business_account") or {}
+                    if ig.get("id") and page.get("access_token"):
+                        ig_targets.append((page, ig))
+                    else:
+                        ig_errors.append(f"{page.get('name', page.get('id', 'Page'))}: Instagram Professional linked account not found; check Page connection and permissions.")
+                ig_pending = sum(1 for page, ig in ig_targets for _, item in prepared if not ig_done.get(str(ig["id"]), {}).get(item["key"]))
+                if ig_pending and not messagebox.askyesno("Confirm Instagram publishing",
+                    f"Ghadi tnشر {ig_pending} new Instagram posts (duplicates skipped). Bghiti tkمل?"):
+                    return
+                for page, ig in ig_targets:
+                    ig_id = str(ig["id"])
+                    account_done = ig_done.setdefault(ig_id, {})
+                    page_token = page.get("access_token", "")
+                    for i, (row, item) in enumerate(prepared, 1):
+                        if account_done.get(item["key"]):
+                            ig_skipped += 1
+                            continue
+                        image_url = str(item.get("image", "") or "").strip()
+                        if not image_url.startswith("https://"):
+                            ig_errors.append(f"{ig.get('username', ig_id)} / product {i}: Instagram kay7taj Image URL public HTTPS.")
+                            continue
+                        caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"[:2200]
+                        try:
+                            container = facebook_api("POST", f"{ig_id}/media", {
+                                "image_url": image_url, "caption": caption, "access_token": page_token
+                            })
+                            creation_id = container.get("id")
+                            if not creation_id:
+                                raise RuntimeError("Instagram ma rje3ch media container ID.")
+                            result = facebook_api("POST", f"{ig_id}/media_publish", {
+                                "creation_id": creation_id, "access_token": page_token
+                            })
+                            if not result.get("id"):
+                                raise RuntimeError("Instagram ma أكدش النشر.")
+                            ig_success += 1
+                            account_done[item["key"]] = {"title": item["title"], "media_id": result["id"]}
+                            save_facebook_checkpoint(checkpoint_path, checkpoint)
+                        except Exception as exc:
+                            ig_errors.append(f"{ig.get('username', ig_id)} / product {i}: {exc}")
+                        self.status.set(f"Instagram: {ig_success}/{len(prepared)} posts...")
+                        self.root.update_idletasks()
+
+            # Threads direct publishing uses its own User ID and Access Token.
+            if "Threads" in platforms:
+                th_done = checkpoint.setdefault("threads_published", {})
+                th_id = self.threads_user_id.get().strip()
+                account_done = th_done.setdefault(th_id, {})
+                th_pending = sum(1 for _, item in prepared if not account_done.get(item["key"]))
+                if th_pending and not messagebox.askyesno("Confirm Threads publishing",
+                    f"Ghadi tnشر {th_pending} new Threads posts (duplicates skipped). Bghiti tkمل?"):
+                    return
+                for i, (row, item) in enumerate(prepared, 1):
+                    if account_done.get(item["key"]):
+                        th_skipped += 1
+                        continue
+                    try:
+                        post_id = publish_threads(item, th_id, self.threads_token.get().strip())
+                        th_success += 1
+                        account_done[item["key"]] = {"title": item["title"], "post_id": post_id}
+                        save_facebook_checkpoint(checkpoint_path, checkpoint)
+                    except Exception as exc:
+                        th_errors.append(f"Threads / product {i}: {exc}")
+                    self.status.set(f"Threads: {th_success}/{len(prepared)} posts...")
+                    self.root.update_idletasks()
+
             made = []
             headers = ["Platform","ProductId","Title","Text","Description","Hashtags","Image Url","Video Url","Promotion Url","Deduplication Key"]
             for platform in platforms:
@@ -417,13 +550,19 @@ class SocialPublisher:
                         "Promotion Url": item["link"], "Deduplication Key": item["key"],
                     })
                 dest = out / f"{platform.lower()}_ready.csv"; write_csv(dest, result, headers); made.append(str(dest))
-            self.status.set(f"Saliw CSV files. Facebook posts: {fb_success} success, {fb_skipped} duplicates skipped, {len(fb_errors)} errors.")
+            self.status.set(f"Done. Facebook {fb_success}; Instagram {ig_success}; Threads {th_success}.")
             summary = "Tوجدات CSV files:\n\n" + "\n".join(made)
             if "Facebook" in platforms:
                 summary += f"\n\nFacebook: {fb_success} posts successful; {fb_skipped} duplicates skipped; {len(fb_errors)} errors.\nCheckpoint: {checkpoint_path}"
                 if fb_errors:
                     summary += "\n\nFirst errors:\n" + "\n".join(fb_errors[:5])
-            summary += "\n\nFacebook checkpoint kayt7fed f output/facebook_checkpoint.json. Token ma t7fedch f file."
+            if "Instagram" in platforms:
+                summary += f"\n\nInstagram: {ig_success} successful; {ig_skipped} duplicates skipped; {len(ig_errors)} errors."
+                if ig_errors: summary += "\nInstagram errors:\n" + "\n".join(ig_errors[:5])
+            if "Threads" in platforms:
+                summary += f"\n\nThreads: {th_success} successful; {th_skipped} duplicates skipped; {len(th_errors)} errors."
+                if th_errors: summary += "\nThreads errors:\n" + "\n".join(th_errors[:5])
+            summary += "\n\nCheckpoint kayt7fed f output/facebook_checkpoint.json. Tokens ma kayt7fedoch f file."
             messagebox.showinfo("Done", summary)
         except Exception as e:
             messagebox.showerror("Export error", str(e))
