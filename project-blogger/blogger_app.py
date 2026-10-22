@@ -25,6 +25,7 @@ SERVICE = None
 STOP_REQUESTED = False
 GRAPH_BASE = "https://graph.facebook.com/v26.0"
 THREADS_BASE = "https://graph.threads.net/v1.0"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 def meta_post(endpoint, params, base=GRAPH_BASE):
     payload = urllib.parse.urlencode(params).encode("utf-8")
@@ -126,6 +127,48 @@ def make_hashtags(title, existing=""):
                 tags.append(tag)
     tags += ["#DealZone", "#OnlineShopping", "#ProductFinds"]
     return " ".join(tags[:8])
+
+def gemini_hashtags(title, description, api_key):
+    """Generate product-specific social hashtags with Gemini; never log or persist the API key."""
+    prompt = (
+        "Create 6 to 8 useful hashtags for this shopping product. "
+        "Use relevant English keywords, CamelCase for multiword tags, include #DealZone, "
+        "avoid spam and duplicates. Return ONLY the hashtags separated by spaces, no explanation.\n"
+        f"Product title: {title[:300]}\nProduct details: {description[:900]}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 120}
+    }
+    url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?" + urllib.parse.urlencode({"key": api_key})
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            error_data = json.loads(exc.read().decode("utf-8"))
+            message = error_data.get("error", {}).get("message", "Gemini API error")
+        except Exception:
+            message = "Gemini API HTTP error " + str(exc.code)
+        raise RuntimeError("Gemini API: " + str(message)[:240])
+    candidates = data.get("candidates", [])
+    text_out = ""
+    if candidates:
+        text_out = " ".join(part.get("text", "") for part in candidates[0].get("content", {}).get("parts", []))
+    tags = re.findall(r"#[A-Za-z0-9_]+", text_out)
+    tags = list(dict.fromkeys(tags))
+    if not tags:
+        raise RuntimeError("Gemini ma rje3 ta hashtag صالح.")
+    if "#DealZone" not in tags:
+        tags.append("#DealZone")
+    return " ".join(tags[:8])
+
 
 def product_data(row, index):
     title = get_value(row, ["Product Title", "Title", "Product Name", "Name", "Product Desc", "Product Description", "Description", "Product"])
@@ -241,6 +284,7 @@ class BloggerApp:
         self.threads_enabled_var = tk.BooleanVar(value=bool(fb_config.get("threads", False)))
         self.threads_user_id_var = tk.StringVar(value="")
         self.threads_token_var = tk.StringVar(value="")
+        self.gemini_api_key_var = tk.StringVar(value="")
         self.build_ui()
 
     def build_ui(self):
@@ -329,6 +373,12 @@ class BloggerApp:
         ttk.Label(outer, text="Threads Access Token (ila khtarti Threads):").pack(anchor="w", pady=(5, 2))
         ttk.Entry(outer, textvariable=self.threads_token_var, show="*").pack(fill="x")
         ttk.Label(outer, text="Tokens ma kayt7fedouch f GitHub w kayb9aw ghir f had session.", wraplength=700).pack(anchor="w", pady=(4, 0))
+        ttk.Label(outer, text="6. Gemini API — optional: generate better hashtags per product").pack(anchor="w", pady=(14, 3))
+        gemini_row = ttk.Frame(outer)
+        gemini_row.pack(fill="x")
+        ttk.Entry(gemini_row, textvariable=self.gemini_api_key_var, show="*").pack(side="left", fill="x", expand=True)
+        ttk.Button(gemini_row, text="Get Gemini API key", command=lambda: webbrowser.open("https://aistudio.google.com/apikey")).pack(side="left", padx=(8, 0))
+        ttk.Label(outer, text="API key kayb9a ghir f had session; ila khlitiha khawya, l-app ghadi تستعمل hashtags العادية.", wraplength=700).pack(anchor="w", pady=(3, 0))
 
         limits = ttk.Frame(outer)
         limits.pack(fill="x", pady=(14, 4))
@@ -584,6 +634,12 @@ class BloggerApp:
             return
         for n, (i, item) in enumerate(candidates, start=1):
             try:
+                gemini_key = self.gemini_api_key_var.get().strip()
+                if gemini_key:
+                    try:
+                        item["hashtags"] = gemini_hashtags(item["title"], item["description"], gemini_key)
+                    except Exception as gemini_error:
+                        self.root.after(0, lambda msg=str(gemini_error): self.status_var.set("Gemini failed; using fallback hashtags. " + msg[:150]))
                 body = {"kind": "blogger#post", "blog": {"id": blog["id"]}, "title": item["title"], "content": make_html(item)}
                 result = SERVICE.posts().insert(blogId=blog["id"], body=body, isDraft=(mode == "draft")).execute()
                 social_notes = []
