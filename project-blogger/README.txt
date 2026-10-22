@@ -1,37 +1,40 @@
 PROJECT BLOGGER - DEALZONE
 
-This folder contains a desktop interface for selecting a CSV and creating Blogger posts.
+This desktop app creates Blogger posts from a CSV and can share newly published posts to selected social platforms.
 
 FILES
-- blogger_app.py: the app and Blogger screen
-- RUN.bat: installs required Python packages and starts the app
-- requirements.txt: dependencies
-- client_secret.json: YOUR Google OAuth Desktop client file (you must add it locally)
+- blogger_app.py: main app
+- RUN.bat: installs dependencies and starts the app
+- requirements.txt: Python packages
+- client_secret.json: add your Google OAuth Desktop client file locally (never upload it)
 
-FIRST-TIME SETUP
-1. Extract the project folder to your computer.
-2. In Google Cloud Console, enable the Blogger API for your project.
-3. Create an OAuth Client ID of type Desktop app and download its JSON file.
-4. Rename that downloaded file to client_secret.json.
-5. Put client_secret.json in the same folder as RUN.bat and blogger_app.py.
-6. Double-click RUN.bat.
-7. Click Connect Blogger. A Google browser window will open. Sign in and approve access.
-8. Choose your Blogger blog from the list.
-9. Choose a CSV file. Existing SEO_Description and Hashtags columns are used if available; otherwise a basic description is generated.
-10. Choose Draft (recommended) first, set Max posts to 3 or 5, and click START BLOGGER to test.
-11. Check the posts in Blogger. If everything looks correct, you can choose Publish publicly on a later run.
+FIRST-TIME BLOGGER SETUP
+1. Download/extract the project-blogger folder.
+2. In Google Cloud Console, enable Blogger API.
+3. Create OAuth Client ID -> Desktop app, download the JSON, rename it client_secret.json, and put it beside RUN.bat.
+4. Double-click RUN.bat, then click Connect Blogger and approve Google access.
+5. Choose your Blogger blog and the product CSV.
+6. Start with Draft and 3–5 posts. Check Blogger before switching to Publish publicly.
 
-IMPORTANT SECURITY
-- Never upload client_secret.json or blogger_token.json to GitHub or send them in public messages.
-- blogger_token.json is created locally after you authorize Google.
-- Keep these files private on your computer.
-- The app saves published_state.json locally to avoid processing the same products twice from the same CSV path.
-- Keep the original CSV unchanged; the app only reads it.
+SHARE TO FACEBOOK / INSTAGRAM / THREADS
+1. Choose Publish publicly. Social sharing does not run for Blogger drafts.
+2. Under social sharing, tick only the platforms you want: Facebook, Instagram and/or Threads. Untick a platform to skip it.
+3. For Facebook and/or Instagram, paste a Facebook User Access Token and click Load all Facebook Pages. Select the Page(s) you want to post to.
+4. Facebook requires a token with permission to list Pages and publish posts to the selected Page.
+5. Instagram requires an Instagram Professional account linked to the selected Facebook Page, suitable Meta permissions, and a publicly accessible HTTPS Image URL in the CSV. This version publishes image posts; it does not upload local files.
+6. For Threads, enter your Threads User ID and Threads Access Token. The token must have the required Threads publishing permissions.
+7. Test with one product first. Check the app status and each platform after publishing.
 
-CSV COLUMNS IT TRIES TO READ
+TOKEN AND ACCOUNT SAFETY
+- Tokens are entered into the app and are not intentionally written to settings files or committed to GitHub.
+- Never share access tokens, client_secret.json, blogger_token.json, or screenshots showing secrets.
+- If a token fails, check the app permissions, token expiry, Page access, and whether Meta has granted the required permissions. Code cannot bypass Meta's access rules or app-review requirements.
+- This tool uses the official APIs. Posting can fail when an account, media URL, token or permission does not meet platform requirements.
+
+CSV FIELDS
 Title / Product Title / Product Name / Product Desc, SEO_Description, Hashtags, Image Url, Promotion Url, ProductId.
 
 NOTES
-- Test with Draft and a small number of posts before public publishing.
-- Posts with missing product links or images can still be created, but may be less useful.
-- Blogger API quotas and Google account permissions apply.
+- The app does not automatically share old Blogger posts; it shares a post created and published during the current run.
+- The original CSV is only read, not changed.
+- Blogger token and published_state.json are stored locally to support Blogger login and avoid duplicate posts.
