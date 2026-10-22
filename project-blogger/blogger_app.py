@@ -23,6 +23,60 @@ CSV_PATH = None
 BLOGS = []
 SERVICE = None
 STOP_REQUESTED = False
+GRAPH_BASE = "https://graph.facebook.com/v26.0"
+THREADS_BASE = "https://graph.threads.net/v1.0"
+
+def meta_post(endpoint, params, base=GRAPH_BASE):
+    payload = urllib.parse.urlencode(params).encode("utf-8")
+    request = urllib.request.Request(f"{base}/{endpoint.lstrip('/')}", data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            data = json.loads(exc.read().decode("utf-8"))
+            err = data.get("error", {})
+            raise RuntimeError(f"Meta API ({err.get('code')}): {err.get('message', 'API error')}")
+        except (ValueError, json.JSONDecodeError):
+            raise RuntimeError(f"Meta API HTTP error: {exc.code}")
+    if data.get("error"):
+        err = data["error"]
+        raise RuntimeError(f"Meta API ({err.get('code')}): {err.get('message', 'API error')}")
+    return data
+
+def publish_instagram(item, page, caption):
+    image_url = str(item.get("image", "") or "").strip()
+    if not image_url.startswith("https://"):
+        raise RuntimeError("Instagram kay7taj Image URL public b HTTPS f had l-version.")
+    ig_id = str((page.get("instagram_business_account") or {}).get("id", "")).strip()
+    page_token = str(page.get("access_token", "")).strip()
+    if not ig_id or not page_token:
+        raise RuntimeError("Had Facebook Page ma مربوطةش b Instagram Professional, ola token ma fihch access.")
+    container = meta_post(f"{ig_id}/media", {"image_url": image_url, "caption": caption[:2200], "access_token": page_token})
+    creation_id = container.get("id")
+    if not creation_id:
+        raise RuntimeError("Instagram ma rje3ch media container ID.")
+    published = meta_post(f"{ig_id}/media_publish", {"creation_id": creation_id, "access_token": page_token})
+    if not published.get("id"):
+        raise RuntimeError("Instagram ma أكدش النشر.")
+    return published["id"]
+
+def publish_threads(item, user_id, token, caption):
+    image_url = str(item.get("image", "") or "").strip()
+    params = {"access_token": token, "text": caption[:500]}
+    if image_url.startswith("https://"):
+        params.update({"media_type": "IMAGE", "image_url": image_url})
+    else:
+        params.update({"media_type": "TEXT"})
+    container = meta_post(f"{user_id}/threads", params, base=THREADS_BASE)
+    creation_id = container.get("id")
+    if not creation_id:
+        raise RuntimeError("Threads ma rje3ch creation ID.")
+    published = meta_post(f"{user_id}/threads_publish", {"creation_id": creation_id, "access_token": token}, base=THREADS_BASE)
+    if not published.get("id"):
+        raise RuntimeError("Threads ma أكدش النشر.")
+    return published["id"]
 
 def clean(value):
     value = str(value or "")
@@ -171,14 +225,18 @@ class BloggerApp:
         self.facebook_user_token_var = tk.StringVar(value="")
         self.facebook_page_id_var = tk.StringVar(value="")
         self.facebook_pages = []
-        self.facebook_enabled_var = tk.BooleanVar(value=bool(fb_config.get("enabled", False)))
+        self.facebook_enabled_var = tk.BooleanVar(value=bool(fb_config.get("facebook", fb_config.get("enabled", False))))
+        self.instagram_enabled_var = tk.BooleanVar(value=bool(fb_config.get("instagram", False)))
+        self.threads_enabled_var = tk.BooleanVar(value=bool(fb_config.get("threads", False)))
+        self.threads_user_id_var = tk.StringVar(value="")
+        self.threads_token_var = tk.StringVar(value="")
         self.build_ui()
 
     def build_ui(self):
         outer = ttk.Frame(self.root, padding=18)
         outer.pack(fill="both", expand=True)
         ttk.Label(outer, text="PROJECT BLOGGER", font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        ttk.Label(outer, text="CSV  →  SEO Description + Hashtags  →  Blogger", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 16))
+        ttk.Label(outer, text="Blogger → اختار المنصات اللي بغيتي تشارك فيها", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 16))
         style = ttk.Style()
         style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), padding=(14, 9))
         style.configure("TButton", padding=(8, 5))
@@ -208,10 +266,12 @@ class BloggerApp:
         ttk.Radiobutton(modes, text="Draft (recommended)", variable=self.mode_var, value="draft").pack(side="left", padx=(0, 16))
         ttk.Radiobutton(modes, text="Publish publicly", variable=self.mode_var, value="publish").pack(side="left")
 
-        ttk.Label(outer, text="5. Share PUBLIC Blogger posts to Facebook Pages").pack(anchor="w", pady=(14, 4))
+        ttk.Label(outer, text="5. Share public Blogger posts (select only what you want)").pack(anchor="w", pady=(14, 4))
         fbrow = ttk.Frame(outer)
         fbrow.pack(fill="x", pady=2)
-        ttk.Checkbutton(fbrow, text="Share after Blogger publishes", variable=self.facebook_enabled_var).pack(side="left")
+        ttk.Checkbutton(fbrow, text="Facebook", variable=self.facebook_enabled_var).pack(side="left", padx=(0, 14))
+        ttk.Checkbutton(fbrow, text="Instagram", variable=self.instagram_enabled_var).pack(side="left", padx=(0, 14))
+        ttk.Checkbutton(fbrow, text="Threads", variable=self.threads_enabled_var).pack(side="left")
         ttk.Label(outer, text="Facebook User Access Token (with pages_show_list and Page posting permissions):").pack(anchor="w", pady=(5, 2))
         tokenrow = ttk.Frame(outer); tokenrow.pack(fill="x")
         ttk.Entry(tokenrow, textvariable=self.facebook_user_token_var, show="*").pack(side="left", fill="x", expand=True)
@@ -223,7 +283,12 @@ class BloggerApp:
         ttk.Label(outer, text="Or select one or more loaded Pages below (Ctrl/Shift for multiple):").pack(anchor="w", pady=(5, 2))
         self.facebook_pages_list = tk.Listbox(outer, height=4, selectmode=tk.EXTENDED, exportselection=False)
         self.facebook_pages_list.pack(fill="x")
-        ttk.Label(outer, text="Only PUBLIC Blogger posts are shared. Pages must be visible to your token and allow publishing. Tokens are not uploaded to GitHub.", wraplength=700).pack(anchor="w", pady=(3, 0))
+        ttk.Label(outer, text="Instagram kaykhdem b Facebook Page token, khas Instagram Professional mrbout b Page w Image URL public b HTTPS.", wraplength=700).pack(anchor="w", pady=(3, 0))
+        ttk.Label(outer, text="Threads User ID:").pack(anchor="w", pady=(8, 2))
+        ttk.Entry(outer, textvariable=self.threads_user_id_var).pack(fill="x")
+        ttk.Label(outer, text="Threads Access Token (ila khtarti Threads):").pack(anchor="w", pady=(5, 2))
+        ttk.Entry(outer, textvariable=self.threads_token_var, show="*").pack(fill="x")
+        ttk.Label(outer, text="Tokens ma kayt7fedouch f GitHub w kayb9aw ghir f had session.", wraplength=700).pack(anchor="w", pady=(4, 0))
 
         limits = ttk.Frame(outer)
         limits.pack(fill="x", pady=(14, 4))
@@ -247,7 +312,9 @@ class BloggerApp:
     def save_facebook_config(self):
         # OAuth tokens are intentionally not saved in this settings file.
         selected = self.selected_facebook_pages()
-        config = {"enabled": bool(self.facebook_enabled_var.get()),
+        config = {"facebook": bool(self.facebook_enabled_var.get()),
+                  "instagram": bool(self.instagram_enabled_var.get()),
+                  "threads": bool(self.threads_enabled_var.get()),
                   "page_ids": [str(p.get("id", "")) for p in selected]}
         FACEBOOK_CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -444,11 +511,14 @@ class BloggerApp:
         except Exception as e:
             messagebox.showerror("Facebook settings", f"Could not save Facebook settings locally: {e}")
             return
-        if self.facebook_enabled_var.get() and mode != "publish":
-            messagebox.showwarning("Facebook sharing", "Facebook share kaykhdem ghir mlli tkhtar Publish publicly. Drafts ma kaytpartagawch.")
+        if (self.facebook_enabled_var.get() or self.instagram_enabled_var.get() or self.threads_enabled_var.get()) and mode != "publish":
+            messagebox.showwarning("Social sharing", "Social sharing kaykhdem ghir mlli tkhtar Publish publicly. Drafts ma kaytpartagawch.")
             return
-        if self.facebook_enabled_var.get() and not self.selected_facebook_pages():
-            messagebox.showwarning("Facebook settings", "Dkhel User Access Token, klik Load all Facebook Pages, w khtar Page wa7da 3la l-a9al.")
+        if (self.facebook_enabled_var.get() or self.instagram_enabled_var.get()) and not self.selected_facebook_pages():
+            messagebox.showwarning("Social settings", "Dkhel Facebook User Access Token, klik Load all Facebook Pages, w khtar Page.")
+            return
+        if self.threads_enabled_var.get() and (not self.threads_user_id_var.get().strip() or not self.threads_token_var.get().strip()):
+            messagebox.showwarning("Threads settings", "Dkhel Threads User ID w Access Token, ola 7yed check dyal Threads.")
             return
         if mode == "publish":
             ok = messagebox.askyesno("Confirm public publishing", f"Ghadi tnشر max {limit} posts مباشرة للعموم f:\n{blog.get('name')}\n\nWash met2akked?")
@@ -483,18 +553,40 @@ class BloggerApp:
             try:
                 body = {"kind": "blogger#post", "blog": {"id": blog["id"]}, "title": item["title"], "content": make_html(item)}
                 result = SERVICE.posts().insert(blogId=blog["id"], body=body, isDraft=(mode == "draft")).execute()
-                fb_note = ""
+                social_notes = []
+                caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}\n\n{result.get('url', '')}".strip()
                 if mode == "publish" and self.facebook_enabled_var.get():
                     try:
-                        fb_id = self.share_to_facebook(item, result.get("url", ""))
-                        fb_note = f"Facebook shared: {fb_id}"
-                    except Exception as fb_error:
-                        fb_note = f"Facebook share failed: {str(fb_error)[:500]}"
+                        fb_result = self.share_to_facebook(item, result.get("url", ""))
+                        social_notes.append(f"Facebook OK: {fb_result}")
+                    except Exception as social_error:
+                        social_notes.append(f"Facebook FAILED: {str(social_error)[:260]}")
                         errors += 1
-                file_state[item["key"]] = {"post_id": result.get("id"), "url": result.get("url"), "mode": mode, "time": time.strftime("%Y-%m-%d %H:%M:%S"), "facebook": fb_note}
+                if mode == "publish" and self.instagram_enabled_var.get():
+                    ig_ok, ig_errors = [], []
+                    for page in self.selected_facebook_pages():
+                        try:
+                            ig_id = publish_instagram(item, page, caption)
+                            ig_ok.append(f"{page.get('name', page.get('id'))}: {ig_id}")
+                        except Exception as social_error:
+                            ig_errors.append(f"{page.get('name', page.get('id'))}: {str(social_error)[:220]}")
+                    if ig_ok:
+                        social_notes.append("Instagram OK: " + "; ".join(ig_ok))
+                    if ig_errors:
+                        social_notes.append("Instagram FAILED: " + "; ".join(ig_errors))
+                        errors += len(ig_errors)
+                if mode == "publish" and self.threads_enabled_var.get():
+                    try:
+                        th_id = publish_threads(item, self.threads_user_id_var.get().strip(), self.threads_token_var.get().strip(), caption)
+                        social_notes.append(f"Threads OK: {th_id}")
+                    except Exception as social_error:
+                        social_notes.append(f"Threads FAILED: {str(social_error)[:260]}")
+                        errors += 1
+                social_note = " | ".join(social_notes)
+                file_state[item["key"]] = {"post_id": result.get("id"), "url": result.get("url"), "mode": mode, "time": time.strftime("%Y-%m-%d %H:%M:%S"), "social": social_note}
                 save_state(state)
                 done += 1
-                display_title = item["title"] + (f" | {fb_note}" if fb_note else "")
+                display_title = item["title"] + (f" | {social_note}" if social_note else "")
                 self.root.after(0, lambda n=n, total=total, title=display_title: self._update_progress(n, total, title))
             except Exception as e:
                 errors += 1
