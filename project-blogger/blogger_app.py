@@ -188,10 +188,21 @@ def auth_service():
             creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
         except Exception:
             creds = None
+    # If an old token lacks the Blogger scope, request consent again instead of
+    # silently reusing credentials that cannot list or publish Blogger posts.
+    if creds and creds.valid:
+        try:
+            if not creds.has_scopes(SCOPES):
+                creds = None
+        except Exception:
+            creds = None
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except Exception:
+                creds = None
+        if not creds or not creds.valid:
             flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_FILE), SCOPES)
             creds = flow.run_local_server(port=0, open_browser=True)
         TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
@@ -233,8 +244,37 @@ class BloggerApp:
         self.build_ui()
 
     def build_ui(self):
-        outer = ttk.Frame(self.root, padding=18)
-        outer.pack(fill="both", expand=True)
+        # Scrollable main window: keeps the Start button reachable on smaller screens.
+        shell = ttk.Frame(self.root)
+        shell.pack(fill="both", expand=True)
+        canvas = tk.Canvas(shell, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        outer = ttk.Frame(canvas, padding=18)
+        window_id = canvas.create_window((0, 0), window=outer, anchor="nw")
+
+        def update_scroll_region(_event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def resize_inner(event):
+            canvas.itemconfigure(window_id, width=event.width)
+
+        outer.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", resize_inner)
+
+        def mousewheel(event):
+            if getattr(event, "delta", 0):
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            elif getattr(event, "num", None) == 4:
+                canvas.yview_scroll(-1, "units")
+            elif getattr(event, "num", None) == 5:
+                canvas.yview_scroll(1, "units")
+
+        canvas.bind_all("<MouseWheel>", mousewheel)
+        canvas.bind_all("<Button-4>", mousewheel)
+        canvas.bind_all("<Button-5>", mousewheel)
         ttk.Label(outer, text="PROJECT BLOGGER", font=("Segoe UI", 18, "bold")).pack(anchor="w")
         ttk.Label(outer, text="Blogger → اختار المنصات اللي بغيتي تشارك فيها", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 16))
         style = ttk.Style()
