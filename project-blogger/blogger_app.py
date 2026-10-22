@@ -480,17 +480,10 @@ class BloggerApp:
     def _connect_worker(self):
         try:
             service = auth_service()
-            blogs = []
-            page_token = None
-            while True:
-                params = {"userId": "self", "maxResults": 500}
-                if page_token:
-                    params["pageToken"] = page_token
-                result = service.blogs().listByUser(**params).execute()
-                blogs.extend(result.get("items", []))
-                page_token = result.get("nextPageToken")
-                if not page_token:
-                    break
+            # Use the supported listByUser argument only. Some installed
+            # Blogger API discovery clients reject maxResults for this method.
+            result = service.blogs().listByUser(userId="self").execute()
+            blogs = result.get("items", [])
             if not blogs:
                 raise RuntimeError("Ma ban 7ta blog f had Google account. T2ekked belli dkhleti b nafs Google account li fih blogs.")
             self.root.after(0, lambda: self._connected(blogs))
