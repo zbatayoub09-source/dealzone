@@ -432,19 +432,45 @@ class BloggerApp:
             unique = {}
             for page in pages:
                 if page.get("id") and page.get("access_token"):
+                    # Instagram accounts linked to each Facebook Page are returned here
+                    # when the token has the required permissions and the account is eligible.
+                    page["instagram_business_account"] = page.get("instagram_business_account") or {}
                     unique[str(page["id"])] = page
             self.facebook_pages = list(unique.values())
             self.facebook_pages_list.delete(0, "end")
             old_ids = set(str(x) for x in self.load_facebook_config().get("page_ids", []))
+            linked_count = 0
             for page in self.facebook_pages:
-                self.facebook_pages_list.insert("end", f"{page.get('name', 'Page')} | ID: {page.get('id', '')}")
+                ig = page.get("instagram_business_account") or {}
+                ig_id = str(ig.get("id", "")).strip()
+                if ig_id and page.get("access_token"):
+                    try:
+                        detail_params = urllib.parse.urlencode({
+                            "fields": "id,username,name",
+                            "access_token": page["access_token"],
+                        })
+                        detail_url = "https://graph.facebook.com/v26.0/" + urllib.parse.quote(ig_id, safe="") + "?" + detail_params
+                        with urllib.request.urlopen(urllib.request.Request(detail_url, method="GET"), timeout=15) as response:
+                            detail = json.loads(response.read().decode("utf-8"))
+                        if not detail.get("error"):
+                            ig.update(detail)
+                        linked_count += 1
+                    except Exception:
+                        # Keep the linked IG ID even if username lookup is not permitted.
+                        pass
+                label = f"{page.get('name', 'Page')} | FB ID: {page.get('id', '')}"
+                if ig_id:
+                    label += f" | Instagram: @{ig.get('username')}" if ig.get("username") else f" | Instagram linked (ID: {ig_id})"
+                else:
+                    label += " | No Instagram linked"
+                self.facebook_pages_list.insert("end", label)
                 if str(page.get("id")) in old_ids:
                     self.facebook_pages_list.selection_set("end")
-            self.status_var.set(f"Facebook: l9ina {len(self.facebook_pages)} Pages.")
+            self.status_var.set(f"Facebook: {len(self.facebook_pages)} Pages; Instagram linked: {linked_count}.")
             if not self.facebook_pages:
                 messagebox.showwarning("No Pages", "Ma ban ta Page. T2ekked men permissions dyal token w access dyalek l-Pages.")
             else:
-                messagebox.showinfo("Facebook Pages", f"L9ina {len(self.facebook_pages)} Pages. Khtar li bghiti.")
+                messagebox.showinfo("Facebook & Instagram", f"L9ina {len(self.facebook_pages)} Facebook Pages. {linked_count} Pages 3andhom Instagram linked li ban l-API. Khtar Pages li bghiti.")
         except Exception as e:
             messagebox.showerror("Facebook error", str(e))
 
@@ -653,10 +679,17 @@ class BloggerApp:
                         errors += 1
                 if mode == "publish" and self.instagram_enabled_var.get():
                     ig_ok, ig_errors = [], []
-                    for page in self.selected_facebook_pages():
+                    selected_ig_pages = [
+                        page for page in self.selected_facebook_pages()
+                        if str((page.get("instagram_business_account") or {}).get("id", "")).strip()
+                    ]
+                    if not selected_ig_pages:
+                        ig_errors.append("No selected Facebook Page has a linked Instagram Professional account. Click Load all Facebook Pages and select a Page marked Instagram.")
+                    for page in selected_ig_pages:
                         try:
                             ig_id = publish_instagram(item, page, caption)
-                            ig_ok.append(f"{page.get('name', page.get('id'))}: {ig_id}")
+                            ig_name = (page.get("instagram_business_account") or {}).get("username") or page.get("name", page.get("id"))
+                            ig_ok.append(f"@{ig_name}: {ig_id}")
                         except Exception as social_error:
                             ig_errors.append(f"{page.get('name', page.get('id'))}: {str(social_error)[:220]}")
                     if ig_ok:
