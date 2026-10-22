@@ -1,5 +1,6 @@
 client_secret.json
 blogger_token.json
 published_state.json
+facebook_config.json
 __pycache__/
 *.pyc
