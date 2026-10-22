@@ -11,574 +11,385 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_DIR = Path(__file__).resolve().parent
-PLATFORMS = [
-    ("Facebook", "Facebook"),
-    ("Instagram", "Instagram"),
-    ("TikTok", "TikTok"), ("YouTube", "Youtube"),
-    ("Pinterest", "Pinterest"), ("Threads", "Threads"),
-]
-
-GRAPH_VERSION = "v26.0"
-GRAPH_BASE = f"https://graph.facebook.com/{GRAPH_VERSION}"
+PLATFORMS = ["Facebook", "Instagram", "Threads", "TikTok", "YouTube", "Pinterest"]
+GRAPH_BASE = "https://graph.facebook.com/v26.0"
 THREADS_BASE = "https://graph.threads.net/v1.0"
 
-def threads_api(method, endpoint, params):
-    params = dict(params)
-    url = f"{THREADS_BASE}/{endpoint.lstrip('/')}"
-    if method == "GET":
-        url += "?" + urllib.parse.urlencode(params)
-        request = urllib.request.Request(url, method="GET")
-    else:
-        body = urllib.parse.urlencode(params).encode("utf-8")
-        request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+
+def api_post(base, endpoint, params, label="API"):
+    body = urllib.parse.urlencode(params).encode("utf-8")
+    req = urllib.request.Request(f"{base}/{endpoint.lstrip('/')}", data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=45) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
+        with urllib.request.urlopen(req, timeout=45) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
         try:
-            data = json.loads(exc.read().decode("utf-8"))
+            data = json.loads(e.read().decode("utf-8"))
             err = data.get("error", {})
-            raise RuntimeError(f"Threads API ({err.get('code')}): {err.get('message', 'API error')}")
+            raise RuntimeError(f"{label} ({err.get('code')}): {err.get('message', 'API error')}")
         except (ValueError, json.JSONDecodeError):
-            raise RuntimeError(f"Threads API HTTP error: {exc.code}")
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Ma t9drch tconnecta b Threads: {exc.reason}")
+            raise RuntimeError(f"{label} HTTP error: {e.code}")
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Connexion {label}: {e.reason}")
     if isinstance(data, dict) and data.get("error"):
         err = data["error"]
-        raise RuntimeError(f"Threads API ({err.get('code')}): {err.get('message', 'API error')}")
+        raise RuntimeError(f"{label} ({err.get('code')}): {err.get('message', 'API error')}")
     return data
+
+
+def api_get(base, endpoint, params, label="API"):
+    url = f"{base}/{endpoint.lstrip('/')}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=45) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            data = json.loads(e.read().decode("utf-8"))
+            err = data.get("error", {})
+            raise RuntimeError(f"{label} ({err.get('code')}): {err.get('message', 'API error')}")
+        except (ValueError, json.JSONDecodeError):
+            raise RuntimeError(f"{label} HTTP error: {e.code}")
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Connexion {label}: {e.reason}")
+    if isinstance(data, dict) and data.get("error"):
+        err = data["error"]
+        raise RuntimeError(f"{label} ({err.get('code')}): {err.get('message', 'API error')}")
+    return data
+
 
 def publish_threads(item, user_id, token):
-    caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
-    image_url = str(item.get("image", "") or "").strip()
-    params = {"access_token": token}
-    if image_url.startswith("https://"):
-        params.update({"media_type": "IMAGE", "image_url": image_url, "text": caption[:500]})
+    caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"[:500]
+    image = item.get("image", "").strip()
+    params = {"access_token": token, "text": caption}
+    if image.startswith("https://"):
+        params.update({"media_type": "IMAGE", "image_url": image})
     else:
-        params.update({"media_type": "TEXT", "text": caption[:500]})
-    container = threads_api("POST", f"{user_id}/threads", params)
-    creation_id = container.get("id")
-    if not creation_id:
+        params["media_type"] = "TEXT"
+    c = api_post(THREADS_BASE, f"{user_id}/threads", params, "Threads API")
+    cid = c.get("id")
+    if not cid:
         raise RuntimeError("Threads ma rje3ch creation ID.")
-    result = threads_api("POST", f"{user_id}/threads_publish", {
-        "creation_id": creation_id, "access_token": token
-    })
-    if not result.get("id"):
-        raise RuntimeError("Threads ma أكدش النشر.")
-    return result.get("id")
+    p = api_post(THREADS_BASE, f"{user_id}/threads_publish",
+                 {"creation_id": cid, "access_token": token}, "Threads API")
+    return p.get("id") or "OK"
 
-def facebook_api(method, endpoint, params):
-    params = dict(params)
-    url = f"{GRAPH_BASE}/{endpoint.lstrip('/')}"
-    if method == "GET":
-        url += "?" + urllib.parse.urlencode(params)
-        request = urllib.request.Request(url, method="GET")
-    else:
-        body = urllib.parse.urlencode(params).encode("utf-8")
-        request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
-    try:
-        with urllib.request.urlopen(request, timeout=35) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        try:
-            data = json.loads(exc.read().decode("utf-8"))
-            err = data.get("error", {})
-            detail = err.get("message", "Facebook API error")
-            code = err.get("code")
-            raise RuntimeError(f"Facebook API ({code}): {detail}")
-        except (ValueError, json.JSONDecodeError):
-            raise RuntimeError(f"Facebook API HTTP error: {exc.code}")
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Ma t9drch tconnecta l-Facebook: {exc.reason}")
-    if isinstance(data, dict) and data.get("error"):
-        err = data["error"]
-        raise RuntimeError(f"Facebook API ({err.get('code')}): {err.get('message', 'Error')}")
-    return data
 
-def clean(value):
-    value = html.unescape(str(value or ""))
-    value = re.sub(r"<[^>]*>", " ", value)
-    return re.sub(r"\s+", " ", value).strip()
+def clean(v):
+    v = html.unescape(str(v or ""))
+    v = re.sub(r"<[^>]*>", " ", v)
+    return re.sub(r"\s+", " ", v).strip()
+
 
 def field(row, names):
     lookup = {str(k).strip().lower(): k for k in row if k is not None}
     for name in names:
-        key = lookup.get(name.lower())
-        if key is not None and clean(row.get(key)):
-            return clean(row.get(key))
+        k = lookup.get(name.lower())
+        if k is not None and clean(row.get(k)):
+            return clean(row.get(k))
     return ""
+
 
 def load_csv(path):
     with open(path, "r", encoding="utf-8-sig", newline="") as f:
         sample = f.read(16000); f.seek(0)
-        try: dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
-        except csv.Error: dialect = csv.excel
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+        except csv.Error:
+            dialect = csv.excel
         reader = csv.DictReader(f, dialect=dialect)
-        if not reader.fieldnames: raise ValueError("CSV ma fihch headers.")
+        if not reader.fieldnames:
+            raise ValueError("CSV ma fihch headers.")
         rows = list(reader)
-        if not rows: raise ValueError("CSV ma fih ta product.")
+        if not rows:
+            raise ValueError("CSV ma fih ta product.")
         return rows, reader.fieldnames
 
-def improve_with_gemini(title, api_key):
-    prompt = (
-        "Create accurate social-commerce copy in English for this product title. "
-        "Do not invent material, sizes, certifications, benefits, discounts or specifications. "
-        "Correct obvious spelling errors. Return ONLY valid JSON with keys title, description, hashtags. "
-        "Title: concise SEO title under 140 characters. Description: natural useful description, 2 sentences, "
-        "tell buyer to check listing for exact options. Hashtags: array of 5 to 8 relevant hashtags, each starting #. "
-        "Product title: " + title
-    )
+
+def gemini_copy(title, key):
+    prompt = ("Create accurate social-commerce copy in English. Do not invent specs. "
+              "Return ONLY JSON with title, description, hashtags. Title under 140 chars; "
+              "description 2 useful sentences; hashtags 5-8. Product: " + title)
     payload = json.dumps({"contents":[{"parts":[{"text":prompt}]}],
-                          "generationConfig":{"temperature":0.3,"responseMimeType":"application/json"}}).encode("utf-8")
+        "generationConfig":{"temperature":0.3,"responseMimeType":"application/json"}}).encode()
     req = urllib.request.Request(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + api_key,
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + key,
         data=payload, headers={"Content-Type":"application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=45) as response:
-        data = json.loads(response.read().decode("utf-8"))
+    with urllib.request.urlopen(req, timeout=45) as r:
+        data = json.loads(r.read().decode())
     text = data["candidates"][0]["content"]["parts"][0]["text"]
     result = json.loads(text)
-    new_title = clean(result.get("title"))[:180] or title
-    description = clean(result.get("description"))[:2000]
     tags = result.get("hashtags", [])
-    if isinstance(tags, str): tags = re.findall(r"#[A-Za-z0-9_]+", tags)
-    tags = " ".join(dict.fromkeys(("#" + re.sub(r"[^A-Za-z0-9_]", "", str(t)).lstrip("#")) for t in tags if re.sub(r"[^A-Za-z0-9_]", "", str(t).lstrip("#"))))[:8]
-    return new_title, description, tags
+    if isinstance(tags, str):
+        tags = re.findall(r"#[A-Za-z0-9_]+", tags)
+    tags = " ".join(list(dict.fromkeys(
+        "#" + re.sub(r"[^A-Za-z0-9_]", "", str(x).lstrip("#")) for x in tags))[:8])
+    return clean(result.get("title"))[:180] or title, clean(result.get("description"))[:2000], tags
 
-def make_item(row, index, api_key=""):
-    title = field(row, ["Product Title", "Title", "Product Name", "Name", "Product Desc", "Product Description", "Description", "Product"])
-    if not title: title = f"DealZone product {index}"
-    title = title[:180]
-    desc = field(row, ["SEO_Description", "SEO Description", "Product Description", "Product Desc", "Description"])
-    raw_tags = field(row, ["Hashtags", "SEO_Hashtags", "Tags"])
-    tags = " ".join(re.findall(r"#[A-Za-z0-9_]+", raw_tags))
-    if api_key:
-        try:
-            title, desc, tags = improve_with_gemini(title, api_key)
-        except Exception as e:
-            raise RuntimeError(f"Gemini API ma khdamch: {e}")
+
+def make_item(row, index, gemini_key=""):
+    title = field(row, ["Product Title","Title","Product Name","Name","Product Desc","Product Description","Description","Product"])
+    title = (title or f"DealZone product {index}")[:180]
+    desc = field(row, ["SEO_Description","SEO Description","Product Description","Product Desc","Description"])
+    tags = " ".join(re.findall(r"#[A-Za-z0-9_]+", field(row, ["Hashtags","SEO_Hashtags","Tags"])))
+    if gemini_key:
+        title, desc, tags = gemini_copy(title, gemini_key)
     else:
         if len(desc) < 80:
-            desc = f"Discover {title}. Explore the product details and intended use, and check the seller's page for exact options, customer reviews, current price and delivery information before ordering."
+            desc = f"Discover {title}. Check the listing for exact options, price, reviews and delivery information before ordering."
         if len(re.findall(r"#[A-Za-z0-9_]+", tags)) < 3:
-            stop = {"with","from","this","that","and","the","for","new","hot","best","sale","women","summer"}
             words = re.findall(r"[A-Za-z0-9]+", title.lower())
-            words = [w for w in words if len(w) >= 3 and w not in stop]
+            words = [w for w in words if len(w) >= 3]
             tags = " ".join("#" + w for w in list(dict.fromkeys(words))[:5] + ["DealZone","ProductFinds"])
     tags = " ".join(list(dict.fromkeys(re.findall(r"#[A-Za-z0-9_]+", tags)))[:8])
-    image = field(row, ["Image Url", "Image URL", "Image", "ImageUrl", "Main Image"])
-    video = field(row, ["Video Url", "Video URL", "Video", "VideoUrl", "Product Video"])
-    link = field(row, ["Promotion Url", "Promotion URL", "Product Url", "Product URL", "Affiliate Link", "Link", "URL"])
-    pid = field(row, ["ProductId", "Product ID", "Item ID", "ID"])
+    image = field(row, ["Image Url","Image URL","Image","ImageUrl","Main Image"])
+    video = field(row, ["Video Url","Video URL","Video","VideoUrl","Product Video"])
+    link = field(row, ["Promotion Url","Promotion URL","Product Url","Product URL","Affiliate Link","Link","URL"])
+    pid = field(row, ["ProductId","Product ID","Item ID","ID"])
     key = hashlib.sha256((pid or link or title).encode("utf-8", errors="ignore")).hexdigest()
-    return {"title": title, "description": desc[:2000], "hashtags": tags, "image": image, "video": video, "link": link, "key": key}
+    return {"title":title,"description":desc[:2000],"hashtags":tags,"image":image,"video":video,"link":link,"key":key,"pid":pid}
 
-def write_csv(path, rows, headers):
-    with open(path, "w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
-        writer.writeheader(); writer.writerows(rows)
 
-def load_facebook_checkpoint(path):
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {"published": {}}
-    except (OSError, ValueError, json.JSONDecodeError):
-        return {"published": {}}
-
-def save_facebook_checkpoint(path, state):
+def save_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.replace(path)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_json(path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def write_csv(path, rows):
+    headers = ["Platform","ProductId","Title","Text","Description","Hashtags","Image Url","Video Url","Promotion Url","Deduplication Key"]
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=headers); w.writeheader(); w.writerows(rows)
+
 
 class SocialPublisher:
     def __init__(self, root):
         self.root = root
         root.title("DealZone Social Publisher")
-        root.geometry("900x820"); root.minsize(780, 680)
-        self.csv_path = ""; self.rows = []; self.selected = {}
-        self.csv_var = tk.StringVar(value="Ma khtart ta CSV")
-        self.status = tk.StringVar(value="Khtar CSV bach tbda.")
-        self.limit = tk.StringVar(value="20")
-        self.output_dir = tk.StringVar(value=str(APP_DIR / "output"))
-        self.use_ai = tk.BooleanVar(value=False)
-        self.api_key = tk.StringVar(value="")
-        self.facebook_token = tk.StringVar(value="")
-        self.facebook_page_id = tk.StringVar(value="")
-        self.threads_user_id = tk.StringVar(value="")
-        self.threads_token = tk.StringVar(value="")
-        self.facebook_pages = []
-        self.pages_list = None
+        root.geometry("980x760")
+        root.minsize(760, 500)
+        self.rows=[]; self.headers=[]; self.facebook_pages=[]; self.pages_list=None
+        self.selected={p:tk.BooleanVar(value=p in ("Facebook","Instagram","Pinterest")) for p in PLATFORMS}
+        self.csv_var=tk.StringVar(value="Ma khtart ta CSV")
+        self.status=tk.StringVar(value="Khtar CSV bach tbda.")
+        self.limit=tk.StringVar(value="20")
+        self.output_dir=tk.StringVar(value=str(APP_DIR/"output"))
+        self.facebook_token=tk.StringVar(); self.facebook_page_id=tk.StringVar()
+        self.threads_user_id=tk.StringVar(); self.threads_token=tk.StringVar()
+        self.use_ai=tk.BooleanVar(value=False); self.gemini_key=tk.StringVar()
         self.build()
 
     def build(self):
-        main = ttk.Frame(self.root, padding=16); main.pack(fill="both", expand=True)
-        ttk.Label(main, text="DEALZONE SOCIAL PUBLISHER", font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        ttk.Label(main, text="SEO • Hashtags • Image URL • Video URL • Platform CSV", font=("Segoe UI", 10)).pack(anchor="w", pady=(0,10))
-        ttk.Label(main, text="1. CSV dyal AliExpress").pack(anchor="w")
-        r = ttk.Frame(main); r.pack(fill="x", pady=4)
-        ttk.Entry(r, textvariable=self.csv_var, state="readonly").pack(side="left", fill="x", expand=True)
-        ttk.Button(r, text="Choose CSV", command=self.choose_csv).pack(side="left", padx=(8,0))
-        ttk.Label(main, text="2. Platforms").pack(anchor="w", pady=(8,3))
-        pf = ttk.Frame(main); pf.pack(fill="x")
-        for i, (label, _) in enumerate(PLATFORMS):
-            v = tk.BooleanVar(value=label in ("Facebook", "Instagram", "Pinterest")); self.selected[label] = v
-            ttk.Checkbutton(pf, text=label, variable=v).grid(row=i//3, column=i%3, sticky="w", padx=(0,22), pady=2)
-        ttk.Label(main, text="Facebook: Access Token dyal user (ma kayt7fedch)").pack(anchor="w", pady=(10,3))
-        fr = ttk.Frame(main); fr.pack(fill="x")
-        ttk.Entry(fr, textvariable=self.facebook_token, show="*").pack(side="left", fill="x", expand=True)
-        ttk.Button(fr, text="Load Facebook Pages", command=self.load_facebook_pages).pack(side="left", padx=(8,0))
-        ttk.Label(main, text="Paste Facebook Page ID or Facebook Page link, then click Select Page:").pack(anchor="w", pady=(6,2))
-        idrow = ttk.Frame(main); idrow.pack(fill="x", pady=(0,4))
-        ttk.Entry(idrow, textvariable=self.facebook_page_id).pack(side="left", fill="x", expand=True)
-        ttk.Button(idrow, text="Select Page by ID/link", command=self.select_facebook_page_by_id).pack(side="left", padx=(8,0))
-        ttk.Label(main, text="Or select one or more loaded Pages below (Ctrl/Shift for multiple):").pack(anchor="w", pady=(6,2))
-        self.pages_list = tk.Listbox(main, height=4, selectmode=tk.EXTENDED, exportselection=False)
+        # Scrollable main area: the complete form can now be reached by the long bar on the right.
+        shell=ttk.Frame(self.root); shell.pack(fill="both", expand=True)
+        canvas=tk.Canvas(shell, highlightthickness=0)
+        scrollbar=ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        main=ttk.Frame(canvas, padding=16)
+        window=canvas.create_window((0,0), window=main, anchor="nw")
+        main.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(window, width=e.width))
+        def wheel(e):
+            canvas.yview_scroll(int(-e.delta/120), "units")
+        canvas.bind_all("<MouseWheel>", wheel)
+
+        ttk.Label(main,text="DEALZONE SOCIAL PUBLISHER",font=("Segoe UI",18,"bold")).pack(anchor="w")
+        ttk.Label(main,text="CSV → SEO → Social publishing",font=("Segoe UI",10)).pack(anchor="w",pady=(0,12))
+        ttk.Label(main,text="1. CSV dyal AliExpress").pack(anchor="w")
+        r=ttk.Frame(main); r.pack(fill="x",pady=4)
+        ttk.Entry(r,textvariable=self.csv_var,state="readonly").pack(side="left",fill="x",expand=True)
+        ttk.Button(r,text="Choose CSV",command=self.choose_csv).pack(side="left",padx=(8,0))
+
+        ttk.Label(main,text="2. Khtar fin bghiti tnشر",font=("Segoe UI",11,"bold")).pack(anchor="w",pady=(12,4))
+        pf=ttk.Frame(main); pf.pack(fill="x")
+        for i,p in enumerate(PLATFORMS):
+            ttk.Checkbutton(pf,text=p,variable=self.selected[p]).grid(row=i//3,column=i%3,sticky="w",padx=(0,35),pady=4)
+
+        ttk.Label(main,text="Facebook User Access Token (secret)").pack(anchor="w",pady=(12,3))
+        fr=ttk.Frame(main); fr.pack(fill="x")
+        ttk.Entry(fr,textvariable=self.facebook_token,show="*").pack(side="left",fill="x",expand=True)
+        ttk.Button(fr,text="Load Facebook Pages",command=self.load_pages).pack(side="left",padx=(8,0))
+        ttk.Label(main,text="Facebook Page ID ou Page link:").pack(anchor="w",pady=(7,2))
+        ir=ttk.Frame(main); ir.pack(fill="x")
+        ttk.Entry(ir,textvariable=self.facebook_page_id).pack(side="left",fill="x",expand=True)
+        ttk.Button(ir,text="Select Page",command=self.select_page).pack(side="left",padx=(8,0))
+        ttk.Label(main,text="Pages li l9iti: (Ctrl/Shift bach tkhtar aktar mn wa7da)").pack(anchor="w",pady=(7,2))
+        self.pages_list=tk.Listbox(main,height=5,selectmode=tk.EXTENDED,exportselection=False)
         self.pages_list.pack(fill="x")
-        ttk.Label(main, text="Instagram: ID kaytjab automatiquement mn Page Facebook li mkhtara (khass Instagram Professional مربوط بها).", wraplength=850).pack(anchor="w", pady=(5,2))
-        ttk.Label(main, text="Threads User ID:").pack(anchor="w", pady=(6,2))
-        ttk.Entry(main, textvariable=self.threads_user_id).pack(fill="x")
-        ttk.Label(main, text="Threads Access Token (ma kayt7fedch):").pack(anchor="w", pady=(6,2))
-        ttk.Entry(main, textvariable=self.threads_token, show="*").pack(fill="x")
-        ttk.Checkbutton(main, text="Improve title, SEO description and hashtags with Gemini AI (uses API quota)", variable=self.use_ai).pack(anchor="w", pady=(10,3))
-        kr = ttk.Frame(main); kr.pack(fill="x")
-        ttk.Label(kr, text="Gemini API key (ma kayt7fedch f file):").pack(side="left")
-        ttk.Entry(kr, textvariable=self.api_key, show="*", width=48).pack(side="left", fill="x", expand=True, padx=6)
-        ttk.Label(main, text="3. Max products f had l-run").pack(anchor="w", pady=(9,3))
-        ttk.Entry(main, textvariable=self.limit, width=10).pack(anchor="w")
-        ttk.Label(main, text="4. Output folder").pack(anchor="w", pady=(8,3))
-        out = ttk.Frame(main); out.pack(fill="x")
-        ttk.Entry(out, textvariable=self.output_dir).pack(side="left", fill="x", expand=True)
-        ttk.Button(out, text="Browse", command=self.choose_output).pack(side="left", padx=(8,0))
-        ttk.Label(main, text="5. Preview").pack(anchor="w", pady=(10,3))
-        self.preview = tk.Text(main, height=12, wrap="word", font=("Segoe UI", 9)); self.preview.pack(fill="both", expand=True)
-        buttons = ttk.Frame(main); buttons.pack(fill="x", pady=(10,3))
-        ttk.Button(buttons, text="Preview first product", command=self.preview_first).pack(side="left")
-        ttk.Button(buttons, text="Publish to Facebook", command=self.publish_facebook).pack(side="left", padx=8)
-        ttk.Button(buttons, text="Publish selected + Generate CSV", command=self.generate).pack(side="left")
-        ttk.Label(main, textvariable=self.status, wraplength=850).pack(anchor="w", pady=(5,0))
-        ttk.Label(main, text="Facebook: t9der tdkhel Access Token, tloadi pages, tkhtar pages, w tnشر direct. Platforms l-akhra kaywjed lihom CSV. Blogger mab9ach dakhel f had l-version.", wraplength=850).pack(anchor="w", pady=(7,0))
+        ttk.Label(main,text="Instagram kayt3amar automatiquement ila Page Facebook مربوطة بـ Instagram Professional.",wraplength=900).pack(anchor="w",pady=(5,2))
 
-    def load_facebook_pages(self):
-        token = self.facebook_token.get().strip()
-        if not token:
-            messagebox.showwarning("Facebook Access Token", "Dkhel Access Token lwl.")
-            return
-        try:
-            pages = []
-            after = None
-            while True:
-                params = {"fields": "id,name,access_token,tasks,instagram_business_account{id,username}", "limit": "100", "access_token": token}
-                if after:
-                    params["after"] = after
-                data = facebook_api("GET", "me/accounts", params)
-                pages.extend(data.get("data", []))
-                after = (data.get("paging", {}).get("cursors", {}) or {}).get("after")
-                if not after or not data.get("data"):
-                    break
-            # Deduplicate pages if Graph API repeats an item between pages.
-            pages = list({str(p.get("id")): p for p in pages if p.get("id")}.values())
-            if not pages:
-                self.facebook_pages = []
-                self.pages_list.delete(0, "end")
-                messagebox.showwarning(
-                    "Ma ban ta page",
-                    "Facebook ma rje3 ta page. T2ekked belli had token user access token fih pages_show_list, w 3andek access l-pages."
-                )
-                return
-            self.facebook_pages = pages
-            self.pages_list.delete(0, "end")
-            for page in pages:
-                self.pages_list.insert("end", f"{page.get('name', 'Page')}  |  ID: {page.get('id', '')}  |  Instagram: {(page.get('instagram_business_account') or {}).get('username', 'not linked')}")
-            self.status.set(f"Facebook: l9ina {len(pages)} pages. Khtar li bghiti.")
-            messagebox.showinfo("Facebook Pages", f"L9ina {len(pages)} pages. T9der t7edded pages li bghiti mn list.")
-        except Exception as e:
-            messagebox.showerror("Facebook API error", str(e))
+        ttk.Label(main,text="Threads User ID:").pack(anchor="w",pady=(10,2))
+        ttk.Entry(main,textvariable=self.threads_user_id).pack(fill="x")
+        ttk.Label(main,text="Threads Access Token:").pack(anchor="w",pady=(6,2))
+        ttk.Entry(main,textvariable=self.threads_token,show="*").pack(fill="x")
 
-    def select_facebook_page_by_id(self):
-        raw = self.facebook_page_id.get().strip()
-        if not raw:
-            messagebox.showwarning("Facebook Page ID", "Paste Page ID or Facebook Page link first.")
-            return
-        match = re.search(r"(?:[?&]id=|/pages/[^/?#]+/|/)([0-9]{6,})(?:[/?#&]|$)", raw)
-        page_id = raw if raw.isdigit() else (match.group(1) if match else "")
-        if not page_id:
-            messagebox.showerror("Facebook Page ID", "Ma qdrtch nخرج Page ID men had lien. Paste numeric Page ID (ra9m) li f lien.")
-            return
-        for i, page in enumerate(self.facebook_pages):
-            if str(page.get("id", "")) == page_id and page.get("access_token"):
-                self.pages_list.selection_clear(0, "end")
-                self.pages_list.selection_set(i)
-                self.pages_list.see(i)
-                self.status.set("Facebook Page selected: " + str(page.get("name", page_id)) + " (" + page_id + ")")
-                return
-        # Try a direct Page lookup when the page is not in the /me/accounts list.
-        try:
-            page = facebook_api("GET", page_id, {
-                "fields": "id,name,access_token,tasks,instagram_business_account{id,username}",
-                "access_token": self.facebook_token.get().strip(),
-            })
-            if page.get("id") and page.get("access_token"):
-                self.facebook_pages.append(page)
-                i = len(self.facebook_pages) - 1
-                self.pages_list.insert("end", str(page.get("name", "Page")) + "  |  ID: " + str(page.get("id")) + "  |  Instagram: " + str((page.get("instagram_business_account") or {}).get("username", "not linked")) )
-                self.pages_list.selection_clear(0, "end")
-                self.pages_list.selection_set(i)
-                self.pages_list.see(i)
-                self.status.set("Facebook Page selected: " + str(page.get("name", page_id)) + " (" + page_id + ")")
-                return
-        except Exception:
-            pass
-        messagebox.showerror("Page not available", "Facebook ma rje3ch Page Access Token l had ID. T2ekked belli user token 3ando access l Page w permissions dyal publishing. Ma ymkench tnشر b ID bo7do bla Page Access Token.")
+        ttk.Label(main,text="Gemini AI (ikhtiyari)").pack(anchor="w",pady=(12,3))
+        ttk.Checkbutton(main,text="Generate SEO title + description + hashtags",variable=self.use_ai).pack(anchor="w")
+        ttk.Entry(main,textvariable=self.gemini_key,show="*").pack(fill="x",pady=4)
+
+        ttk.Label(main,text="3. Max products f had l-run").pack(anchor="w",pady=(10,3))
+        ttk.Entry(main,textvariable=self.limit,width=10).pack(anchor="w")
+        ttk.Label(main,text="4. Output folder").pack(anchor="w",pady=(10,3))
+        orow=ttk.Frame(main); orow.pack(fill="x")
+        ttk.Entry(orow,textvariable=self.output_dir).pack(side="left",fill="x",expand=True)
+        ttk.Button(orow,text="Browse",command=self.choose_output).pack(side="left",padx=(8,0))
+
+        ttk.Label(main,text="5. Preview").pack(anchor="w",pady=(12,3))
+        self.preview=tk.Text(main,height=10,wrap="word",font=("Segoe UI",9)); self.preview.pack(fill="x")
+        buttons=ttk.Frame(main); buttons.pack(fill="x",pady=(10,5))
+        ttk.Button(buttons,text="Preview first product",command=self.preview_first).pack(side="left")
+        ttk.Button(buttons,text="Publish selected + Generate CSV",command=self.generate).pack(side="left",padx=8)
+        ttk.Label(main,textvariable=self.status,wraplength=900).pack(anchor="w",pady=(5,0))
+        ttk.Label(main,text="⬇ Hna t9der thbet lta7t b scrollbar li f jnab bach twsel lزر ديال النشر.",font=("Segoe UI",10,"bold"),wraplength=900).pack(anchor="w",pady=(12,20))
 
     def choose_csv(self):
-        path = filedialog.askopenfilename(title="Choose AliExpress CSV", filetypes=[("CSV files","*.csv"),("All files","*.*")])
-        if not path: return
+        p=filedialog.askopenfilename(title="Choose AliExpress CSV",filetypes=[("CSV files","*.csv"),("All files","*.*")])
+        if not p:return
         try:
-            rows, headers = load_csv(path)
-            self.csv_path, self.rows, self.headers = path, rows, headers
-            self.csv_var.set(path); self.status.set(f"CSV wajed: {len(rows)} products.")
-            self.preview_first()
-        except Exception as e: messagebox.showerror("CSV error", str(e))
+            self.rows,self.headers=load_csv(p); self.csv_var.set(p); self.status.set(f"CSV wajed: {len(self.rows)} products."); self.preview_first()
+        except Exception as e: messagebox.showerror("CSV error",str(e))
 
     def choose_output(self):
-        p = filedialog.askdirectory(title="Choose output folder")
-        if p: self.output_dir.set(p)
+        p=filedialog.askdirectory(title="Choose output folder")
+        if p:self.output_dir.set(p)
 
     def preview_first(self):
         if not self.rows:
-            messagebox.showwarning("Choose CSV", "Khtar CSV lwl."); return
+            messagebox.showwarning("CSV","Khtar CSV lwl.");return
         try:
-            key = self.api_key.get().strip() if self.use_ai.get() else ""
-            if self.use_ai.get() and not key:
-                messagebox.showwarning("Gemini API key", "Dkhel Gemini API key ola 7yed l-option AI."); return
-            item = make_item(self.rows[0], 1, key)
-            self.preview.delete("1.0", "end")
-            self.preview.insert("end", f"TITLE\n{item['title']}\n\nSEO DESCRIPTION\n{item['description']}\n\nHASHTAGS\n{item['hashtags']}\n\nIMAGE\n{item['image']}\n\nVIDEO\n{item['video'] or '(ma kaynach Video Url f had row)'}\n\nPRODUCT LINK\n{item['link']}")
-        except Exception as e: messagebox.showerror("Preview error", str(e))
+            key=self.gemini_key.get().strip() if self.use_ai.get() else ""
+            item=make_item(self.rows[0],1,key)
+            self.preview.delete("1.0","end")
+            self.preview.insert("end",f"TITLE\n{item['title']}\n\nDESCRIPTION\n{item['description']}\n\nHASHTAGS\n{item['hashtags']}\n\nIMAGE\n{item['image']}\n\nVIDEO\n{item['video'] or '(none)'}\n\nLINK\n{item['link']}")
+        except Exception as e: messagebox.showerror("Preview error",str(e))
 
-    def publish_facebook(self):
-        # This button publishes to Facebook only; it must not accidentally post
-        # to Instagram or Threads just because those boxes are also checked.
-        previous = {name: var.get() for name, var in self.selected.items()}
-        for name, var in self.selected.items():
-            var.set(name == "Facebook")
+    def load_pages(self):
+        token=self.facebook_token.get().strip()
+        if not token:
+            messagebox.showwarning("Facebook Token","Dkhel Facebook User Access Token lwl.");return
         try:
-            self.generate()
-        finally:
-            for name, var in self.selected.items():
-                var.set(previous[name])
+            pages=[]; after=None
+            while True:
+                params={"fields":"id,name,access_token,tasks,instagram_business_account{id,username}","limit":"100","access_token":token}
+                if after:params["after"]=after
+                data=api_get(GRAPH_BASE,"me/accounts",params,"Facebook API")
+                pages.extend(data.get("data",[])); after=(data.get("paging",{}).get("cursors",{}) or {}).get("after")
+                if not after or not data.get("data"):break
+            pages=list({str(p.get("id")):p for p in pages if p.get("id")}.values())
+            self.facebook_pages=pages; self.pages_list.delete(0,"end")
+            for p in pages:
+                ig=(p.get("instagram_business_account") or {}).get("username","not linked")
+                self.pages_list.insert("end",f"{p.get('name','Page')} | ID: {p.get('id')} | Instagram: {ig}")
+            if not pages:raise RuntimeError("Ma ban ta Page. T2ekked men permissions dyal User Access Token.")
+            self.status.set(f"Facebook: l9ina {len(pages)} pages.")
+            messagebox.showinfo("Facebook Pages",f"L9ina {len(pages)} pages. Khtar li bghiti.")
+        except Exception as e:messagebox.showerror("Facebook API error",str(e))
+
+    def select_page(self):
+        raw=self.facebook_page_id.get().strip()
+        if not raw:
+            messagebox.showwarning("Page ID","Paste Page ID ola Page link.");return
+        m=re.search(r"(?:[?&]id=|/pages/[^/?#]+/|/)([0-9]{6,})(?:[/?#&]|$)",raw)
+        pid=raw if raw.isdigit() else (m.group(1) if m else "")
+        if not pid:
+            messagebox.showerror("Page ID","Ma qdrtch nخرج Page ID men lien. Jarrab ra9m Page ID.");return
+        for i,p in enumerate(self.facebook_pages):
+            if str(p.get("id"))==pid:
+                self.pages_list.selection_clear(0,"end");self.pages_list.selection_set(i);self.pages_list.see(i);return
+        messagebox.showwarning("Page","Had Page ma kaynach f list. Klik Load Facebook Pages lwl.")
 
     def generate(self):
+        platforms=[p for p in PLATFORMS if self.selected[p].get()]
         if not self.rows:
-            messagebox.showwarning("Choose CSV", "Khtar CSV lwl."); return
-        platforms = [p for p, v in self.selected.items() if v.get()]
+            messagebox.showwarning("CSV","Khtar CSV lwl.");return
         if not platforms:
-            messagebox.showwarning("Choose platform", "Khtar platform wa7da 3la l-a9al."); return
-        selected_pages = []
+            messagebox.showwarning("Platform","Khtar platform wa7da 3la l-a9al.");return
+        selected=[]
         if "Facebook" in platforms or "Instagram" in platforms:
             if not self.facebook_token.get().strip():
-                messagebox.showwarning("Facebook Token", "Dkhel Facebook User Access Token w klik Load Facebook Pages.")
-                return
-            chosen = list(self.pages_list.curselection()) if self.pages_list else []
+                messagebox.showwarning("Facebook Token","Dkhel User Access Token w klik Load Facebook Pages.");return
+            chosen=list(self.pages_list.curselection())
             if not chosen:
-                messagebox.showwarning("Facebook Pages", "Klik Load Facebook Pages, w khtar Page li mربوط بها Instagram.")
-                return
-            selected_pages = [self.facebook_pages[i] for i in chosen]
-        if "Threads" in platforms:
-            if not self.threads_user_id.get().strip() or not self.threads_token.get().strip():
-                messagebox.showwarning("Threads credentials", "Dkhel Threads User ID w Threads Access Token.")
-                return
-        try:
-            limit = int(self.limit.get())
-            if limit < 1: raise ValueError()
+                messagebox.showwarning("Pages","Khtar Page mn list.");return
+            selected=[self.facebook_pages[i] for i in chosen]
+        if "Threads" in platforms and (not self.threads_user_id.get().strip() or not self.threads_token.get().strip()):
+            messagebox.showwarning("Threads","Dkhel Threads User ID w Access Token.");return
+        try:limit=max(1,int(self.limit.get()))
         except ValueError:
-            messagebox.showerror("Limit", "Dkhel ra9m kber men 0."); return
-        api_key = self.api_key.get().strip() if self.use_ai.get() else ""
-        if self.use_ai.get() and not api_key:
-            messagebox.showerror("Gemini API key", "Dkhel Gemini API key ola 7yed l-option AI."); return
-        try:
-            out = Path(self.output_dir.get()).expanduser(); out.mkdir(parents=True, exist_ok=True)
-            selected_rows = self.rows[:limit]; prepared = []
-            for i, row in enumerate(selected_rows, 1):
-                self.status.set(f"Kanwjed product {i}/{len(selected_rows)}...")
-                self.root.update_idletasks()
-                prepared.append((row, make_item(row, i, api_key)))
-            checkpoint_path = out / "facebook_checkpoint.json"
-            checkpoint = load_facebook_checkpoint(checkpoint_path)
-            published = checkpoint.setdefault("published", {})
-            pending_posts = 0
-            if "Facebook" in platforms:
-                for page in selected_pages:
-                    page_id = str(page.get("id", ""))
-                    for row, item in prepared:
-                        if not published.get(page_id, {}).get(item["key"]):
-                            pending_posts += 1
-                if pending_posts == 0:
-                    messagebox.showinfo("Facebook checkpoint", "Had products kamlin tsb9o tnchro f had pages. Ma ghadi n3awd n نشر حتى post.")
-                else:
-                    names = "\n".join(p.get("name", "Page") for p in selected_pages)
-                    if not messagebox.askyesno("Confirm Facebook publishing",
-                        f"Ghadi ynشر ghir {pending_posts} new posts (duplicates skipped).\n\nPages:\n{names}\n\nBghiti tkمل?"):
-                        return
-            fb_success = 0
-            fb_skipped = 0
-            fb_errors = []
-            ig_success = 0
-            ig_skipped = 0
-            ig_errors = []
-            th_success = 0
-            th_skipped = 0
-            th_errors = []
-            if "Facebook" in platforms and pending_posts > 0:
-                for page in selected_pages:
-                    page_id = str(page.get("id", ""))
-                    page_token = page.get("access_token", "")
-                    page_name = page.get("name", page_id)
-                    if not page_token:
-                        fb_errors.append(f"{page_name}: page token ma kaynach")
-                        continue
-                    page_published = published.setdefault(page_id, {})
-                    for i, (row, item) in enumerate(prepared, 1):
-                        if page_published.get(item["key"]):
-                            fb_skipped += 1
-                            continue
-                        caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
-                        try:
-                            image_url = str(item.get("image", "") or "").strip()
-                            if image_url.startswith(("https://", "http://")):
-                                # Publish the product image as a real Facebook Page photo.
-                                # Keep the product/promotion URL in the caption so buyers can open it.
-                                photo_caption = caption
-                                if item.get("link"):
-                                    photo_caption += "\\n\\nShop link: " + item["link"]
-                                facebook_api("POST", f"{page_id}/photos", {
-                                    "url": image_url,
-                                    "caption": photo_caption,
-                                    "access_token": page_token,
-                                })
-                            else:
-                                # If the CSV has no usable image URL, publish a link/text post.
-                                params = {"message": caption, "access_token": page_token}
-                                if item.get("link"):
-                                    params["link"] = item["link"]
-                                facebook_api("POST", f"{page_id}/feed", params)
-                            fb_success += 1
-                            page_published[item["key"]] = {
-                                "product_id": field(row, ["ProductId", "Product ID", "Item ID", "ID"]),
-                                "title": item["title"],
-                                "post_key": item["key"],
-                            }
-                            save_facebook_checkpoint(checkpoint_path, checkpoint)
-                        except Exception as exc:
-                            fb_errors.append(f"{page.get('name', page_id)} / product {i}: {exc}")
-                        self.status.set(f"Facebook: {fb_success}/{len(prepared) * len(selected_pages)} posts...")
-                        self.root.update_idletasks()
-            # Instagram direct publishing using the account linked to each selected Facebook Page.
-            if "Instagram" in platforms:
-                ig_done = checkpoint.setdefault("instagram_published", {})
-                ig_targets = []
-                for page in selected_pages:
-                    ig = page.get("instagram_business_account") or {}
-                    if ig.get("id") and page.get("access_token"):
-                        ig_targets.append((page, ig))
-                    else:
-                        ig_errors.append(f"{page.get('name', page.get('id', 'Page'))}: Instagram Professional linked account not found; check Page connection and permissions.")
-                ig_pending = sum(1 for page, ig in ig_targets for _, item in prepared if not ig_done.get(str(ig["id"]), {}).get(item["key"]))
-                if ig_pending and not messagebox.askyesno("Confirm Instagram publishing",
-                    f"Ghadi tnشر {ig_pending} new Instagram posts (duplicates skipped). Bghiti tkمل?"):
-                    return
-                for page, ig in ig_targets:
-                    ig_id = str(ig["id"])
-                    account_done = ig_done.setdefault(ig_id, {})
-                    page_token = page.get("access_token", "")
-                    for i, (row, item) in enumerate(prepared, 1):
-                        if account_done.get(item["key"]):
-                            ig_skipped += 1
-                            continue
-                        image_url = str(item.get("image", "") or "").strip()
-                        if not image_url.startswith("https://"):
-                            ig_errors.append(f"{ig.get('username', ig_id)} / product {i}: Instagram kay7taj Image URL public HTTPS.")
-                            continue
-                        caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"[:2200]
-                        try:
-                            container = facebook_api("POST", f"{ig_id}/media", {
-                                "image_url": image_url, "caption": caption, "access_token": page_token
-                            })
-                            creation_id = container.get("id")
-                            if not creation_id:
-                                raise RuntimeError("Instagram ma rje3ch media container ID.")
-                            result = facebook_api("POST", f"{ig_id}/media_publish", {
-                                "creation_id": creation_id, "access_token": page_token
-                            })
-                            if not result.get("id"):
-                                raise RuntimeError("Instagram ma أكدش النشر.")
-                            ig_success += 1
-                            account_done[item["key"]] = {"title": item["title"], "media_id": result["id"]}
-                            save_facebook_checkpoint(checkpoint_path, checkpoint)
-                        except Exception as exc:
-                            ig_errors.append(f"{ig.get('username', ig_id)} / product {i}: {exc}")
-                        self.status.set(f"Instagram: {ig_success}/{len(prepared)} posts...")
-                        self.root.update_idletasks()
+            messagebox.showerror("Limit","Dkhel ra9m sahih.");return
+        key=self.gemini_key.get().strip() if self.use_ai.get() else ""
+        out=Path(self.output_dir.get()).expanduser();out.mkdir(parents=True,exist_ok=True)
+        prepared=[(row,make_item(row,i,key)) for i,row in enumerate(self.rows[:limit],1)]
+        state_path=out/"social_checkpoint.json";state=load_json(state_path)
+        fb_done=state.setdefault("facebook",{});ig_done=state.setdefault("instagram",{});th_done=state.setdefault("threads",{})
+        counts={p:0 for p in PLATFORMS};errors=[]
 
-            # Threads direct publishing uses its own User ID and Access Token.
-            if "Threads" in platforms:
-                th_done = checkpoint.setdefault("threads_published", {})
-                th_id = self.threads_user_id.get().strip()
-                account_done = th_done.setdefault(th_id, {})
-                th_pending = sum(1 for _, item in prepared if not account_done.get(item["key"]))
-                if th_pending and not messagebox.askyesno("Confirm Threads publishing",
-                    f"Ghadi tnشر {th_pending} new Threads posts (duplicates skipped). Bghiti tkمل?"):
-                    return
-                for i, (row, item) in enumerate(prepared, 1):
-                    if account_done.get(item["key"]):
-                        th_skipped += 1
-                        continue
+        if "Facebook" in platforms:
+            for page in selected:
+                pid=str(page["id"]);done=fb_done.setdefault(pid,{})
+                for row,item in prepared:
+                    if item["key"] in done:continue
+                    caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
+                    if item["link"]:caption+=f"\n\nShop link: {item['link']}"
                     try:
-                        post_id = publish_threads(item, th_id, self.threads_token.get().strip())
-                        th_success += 1
-                        account_done[item["key"]] = {"title": item["title"], "post_id": post_id}
-                        save_facebook_checkpoint(checkpoint_path, checkpoint)
-                    except Exception as exc:
-                        th_errors.append(f"Threads / product {i}: {exc}")
-                    self.status.set(f"Threads: {th_success}/{len(prepared)} posts...")
-                    self.root.update_idletasks()
+                        if item["image"].startswith(("https://","http://")):
+                            api_post(GRAPH_BASE,f"{pid}/photos",{"url":item["image"],"caption":caption,"access_token":page.get("access_token","")},"Facebook API")
+                        else:
+                            api_post(GRAPH_BASE,f"{pid}/feed",{"message":caption,"access_token":page.get("access_token","")},"Facebook API")
+                        done[item["key"]]=1;counts["Facebook"]+=1;save_json(state_path,state)
+                    except Exception as e:errors.append(f"Facebook / {page.get('name')}: {e}")
 
-            made = []
-            headers = ["Platform","ProductId","Title","Text","Description","Hashtags","Image Url","Video Url","Promotion Url","Deduplication Key"]
-            for platform in platforms:
-                result = []
-                for row, item in prepared:
-                    caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
-                    result.append({
-                        "Platform": platform, "ProductId": field(row, ["ProductId","Product ID","Item ID","ID"]),
-                        "Title": item["title"], "Text": caption, "Description": item["description"],
-                        "Hashtags": item["hashtags"], "Image Url": item["image"], "Video Url": item["video"],
-                        "Promotion Url": item["link"], "Deduplication Key": item["key"],
-                    })
-                dest = out / f"{platform.lower()}_ready.csv"; write_csv(dest, result, headers); made.append(str(dest))
-            self.status.set(f"Done. Facebook {fb_success}; Instagram {ig_success}; Threads {th_success}.")
-            summary = "Tوجدات CSV files:\n\n" + "\n".join(made)
-            if "Facebook" in platforms:
-                summary += f"\n\nFacebook: {fb_success} posts successful; {fb_skipped} duplicates skipped; {len(fb_errors)} errors.\nCheckpoint: {checkpoint_path}"
-                if fb_errors:
-                    summary += "\n\nFirst errors:\n" + "\n".join(fb_errors[:5])
-            if "Instagram" in platforms:
-                summary += f"\n\nInstagram: {ig_success} successful; {ig_skipped} duplicates skipped; {len(ig_errors)} errors."
-                if ig_errors: summary += "\nInstagram errors:\n" + "\n".join(ig_errors[:5])
-            if "Threads" in platforms:
-                summary += f"\n\nThreads: {th_success} successful; {th_skipped} duplicates skipped; {len(th_errors)} errors."
-                if th_errors: summary += "\nThreads errors:\n" + "\n".join(th_errors[:5])
-            summary += "\n\nCheckpoint kayt7fed f output/facebook_checkpoint.json. Tokens ma kayt7fedoch f file."
-            messagebox.showinfo("Done", summary)
-        except Exception as e:
-            messagebox.showerror("Export error", str(e))
-            self.status.set("Wa9e3 error f generation.")
+        if "Instagram" in platforms:
+            for page in selected:
+                ig=page.get("instagram_business_account") or {};iid=str(ig.get("id", ""));
+                if not iid:errors.append(f"Instagram / {page.get('name')}: Instagram Professional ma mrboutach b Page.");continue
+                done=ig_done.setdefault(iid,{})
+                for row,item in prepared:
+                    if item["key"] in done:continue
+                    if not item["image"].startswith("https://"):
+                        errors.append(f"Instagram / {page.get('name')}: Image URL public HTTPS khas.");continue
+                    caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"[:2200]
+                    try:
+                        c=api_post(GRAPH_BASE,f"{iid}/media",{"image_url":item["image"],"caption":caption,"access_token":page.get("access_token","")},"Instagram API")
+                        api_post(GRAPH_BASE,f"{iid}/media_publish",{"creation_id":c["id"],"access_token":page.get("access_token","")},"Instagram API")
+                        done[item["key"]]=1;counts["Instagram"]+=1;save_json(state_path,state)
+                    except Exception as e:errors.append(f"Instagram / {page.get('name')}: {e}")
+
+        if "Threads" in platforms:
+            uid=self.threads_user_id.get().strip();token=self.threads_token.get().strip();done=th_done.setdefault(uid,{})
+            for row,item in prepared:
+                if item["key"] in done:continue
+                try:
+                    done[item["key"]]=publish_threads(item,uid,token);counts["Threads"]+=1;save_json(state_path,state)
+                except Exception as e:errors.append(f"Threads: {e}")
+
+        # For platforms without a direct API configured in this app, always produce ready CSVs.
+        for p in platforms:
+            if p in ("Facebook","Instagram","Threads"):continue
+            rows=[]
+            for row,item in prepared:
+                rows.append({"Platform":p,"ProductId":item["pid"],"Title":item["title"],"Text":f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}","Description":item["description"],"Hashtags":item["hashtags"],"Image Url":item["image"],"Video Url":item["video"],"Promotion Url":item["link"],"Deduplication Key":item["key"]})
+            write_csv(out/f"{p.lower()}_ready.csv",rows);counts[p]=len(rows)
+
+        self.status.set("Done: " + " | ".join(f"{p} {counts[p]}" for p in platforms))
+        msg=" | ".join(f"{p}: {counts[p]}" for p in platforms)
+        if errors:msg += "\n\nErrors:\n"+"\n".join(errors[:8])
+        messagebox.showinfo("DealZone - Done",msg+f"\n\nCheckpoint: {state_path}")
+
 
 def main():
-    root = tk.Tk()
-    try: ttk.Style().theme_use("clam")
-    except Exception: pass
-    SocialPublisher(root); root.mainloop()
+    root=tk.Tk();
+    try:ttk.Style().theme_use("clam")
+    except Exception:pass
+    SocialPublisher(root);root.mainloop()
 
-if __name__ == "__main__":
-    main()
+if __name__=="__main__":main()
