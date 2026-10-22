@@ -326,7 +326,7 @@ class BloggerApp:
         try:
             pages, after = [], None
             while True:
-                params = {"fields": "id,name,access_token,tasks", "limit": "100", "access_token": token}
+                params = {"fields": "id,name,access_token,tasks,instagram_business_account", "limit": "100", "access_token": token}
                 if after:
                     params["after"] = after
                 url = "https://graph.facebook.com/v26.0/me/accounts?" + urllib.parse.urlencode(params)
@@ -378,7 +378,7 @@ class BloggerApp:
         # If the page did not appear in /me/accounts, try resolving the supplied ID directly.
         try:
             token = self.facebook_user_token_var.get().strip()
-            params = urllib.parse.urlencode({"fields": "id,name,access_token,tasks", "access_token": token})
+            params = urllib.parse.urlencode({"fields": "id,name,access_token,tasks,instagram_business_account", "access_token": token})
             url = "https://graph.facebook.com/v26.0/" + urllib.parse.quote(page_id, safe="") + "?" + params
             request = urllib.request.Request(url, method="GET")
             with urllib.request.urlopen(request, timeout=30) as response:
