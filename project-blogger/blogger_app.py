@@ -170,16 +170,22 @@ def gemini_hashtags(title, description, api_key):
     return " ".join(tags[:8])
 
 
-def product_data(row, index):
-    title = get_value(row, ["Product Title", "Title", "Product Name", "Name", "Product Desc", "Product Description", "Description", "Product"])
+def product_data(row, index, column_map=None):
+    column_map = column_map or {}
+    def mapped(field, fallback_names):
+        chosen = column_map.get(field, "")
+        if chosen and chosen != "(Auto-detect)" and chosen in row and clean(row.get(chosen)):
+            return clean(row.get(chosen))
+        return get_value(row, fallback_names)
+    title = mapped("title", ["Product Title", "Title", "Product Name", "Name", "Product Desc", "Product Description", "Description", "Product"])
     if not title:
         title = "DealZone product " + str(index)
     title = title[:180]
-    description = get_value(row, ["SEO_Description", "SEO Description", "Product Description", "Product Desc", "Description"])
+    description = mapped("description", ["SEO_Description", "SEO Description", "Product Description", "Product Desc", "Description"])
     description = make_seo_description(title, description if description != title else "")
     hashtags = make_hashtags(title, get_value(row, ["Hashtags", "SEO_Hashtags", "Tags"]))
-    image = get_value(row, ["Image Url", "Image URL", "Image", "ImageUrl", "Main Image"])
-    link = get_value(row, ["Promotion Url", "Promotion URL", "Product Url", "Product URL", "Affiliate Link", "Link", "URL"])
+    image = mapped("image", ["Image Url", "Image URL", "Image", "ImageUrl", "Main Image"])
+    link = mapped("link", ["Promotion Url", "Promotion URL", "Product Url", "Product URL", "Affiliate Link", "Link", "URL"])
     product_id = get_value(row, ["ProductId", "Product ID", "Item ID", "ID"])
     stable = product_id or link or title
     fingerprint = hashlib.sha256(stable.encode("utf-8", errors="ignore")).hexdigest()
@@ -274,6 +280,12 @@ class BloggerApp:
         self.limit_var = tk.StringVar(value="20")
         self.blog_map = {}
         self.rows = []
+        self.csv_headers = []
+        self.column_map = {"title": "(Auto-detect)", "image": "(Auto-detect)", "description": "(Auto-detect)", "link": "(Auto-detect)"}
+        self.title_column_var = tk.StringVar(value="(Auto-detect)")
+        self.image_column_var = tk.StringVar(value="(Auto-detect)")
+        self.description_column_var = tk.StringVar(value="(Auto-detect)")
+        self.link_column_var = tk.StringVar(value="(Auto-detect)")
         self.connected = False
         fb_config = self.load_facebook_config()
         self.facebook_user_token_var = tk.StringVar(value="")
@@ -343,6 +355,23 @@ class BloggerApp:
         csvrow.pack(fill="x")
         ttk.Entry(csvrow, textvariable=self.csv_var, state="readonly").pack(side="left", fill="x", expand=True)
         ttk.Button(csvrow, text="Browse CSV", command=self.choose_csv).pack(side="left", padx=(8, 0))
+
+        ttk.Label(outer, text="3a. Match CSV columns (you choose the columns; Buy Link is selectable too)").pack(anchor="w", pady=(10, 4))
+        self.column_combos = {}
+        for label, key, variable in [
+            ("Title / Product name", "title", self.title_column_var),
+            ("Photo / Image URL", "image", self.image_column_var),
+            ("Description", "description", self.description_column_var),
+            ("Buy link / Shopping URL", "link", self.link_column_var),
+        ]:
+            column_row = ttk.Frame(outer)
+            column_row.pack(fill="x", pady=2)
+            ttk.Label(column_row, text=label, width=22).pack(side="left")
+            combo = ttk.Combobox(column_row, textvariable=variable, state="readonly", values=["(Auto-detect)"])
+            combo.pack(side="left", fill="x", expand=True)
+            self.column_combos[key] = combo
+
+        ttk.Label(outer, text="Choose the exact CSV header for each field. If a field is not in your CSV, leave it on Auto-detect.", wraplength=700).pack(anchor="w", pady=(2, 0))
 
         ttk.Label(outer, text="4. Publishing mode").pack(anchor="w", pady=(14, 4))
         modes = ttk.Frame(outer)
@@ -591,7 +620,23 @@ class BloggerApp:
             if not self.rows:
                 raise ValueError("Had CSV ma fih ta product rows.")
             self.csv_var.set(filename)
-            self.status_var.set(f"CSV ready: {len(self.rows)} products. SEO descriptions and hashtags will be generated when missing.")
+            self.csv_headers = list(self.rows[0].keys())
+            choices = ["(Auto-detect)"] + self.csv_headers
+            for combo in self.column_combos.values():
+                combo["values"] = choices
+                combo.set("(Auto-detect)")
+            suggestions = {
+                "title": ["product title", "title", "product name", "name", "product desc", "product description"],
+                "image": ["image url", "imageurl", "image/video url", "image", "photo", "photo_url"],
+                "description": ["seo_description", "seo description", "description", "product description", "product desc", "details"],
+                "link": ["promotion url", "product url", "affiliate link", "buy link", "link", "url"],
+            }
+            variables = {"title": self.title_column_var, "image": self.image_column_var,
+                         "description": self.description_column_var, "link": self.link_column_var}
+            for key, names in suggestions.items():
+                match = next((h for h in self.csv_headers if str(h).strip().lower() in names), None)
+                variables[key].set(match if match else "(Auto-detect)")
+            self.status_var.set(f"CSV ready: {len(self.rows)} products. Review the 4 column selections, including Buy link, before publishing.")
         except Exception as e:
             messagebox.showerror("CSV error", str(e))
 
@@ -640,6 +685,12 @@ class BloggerApp:
 
     def _publish_worker(self, blog, mode, limit):
         state = load_state()
+        self.column_map = {
+            "title": self.title_column_var.get(),
+            "image": self.image_column_var.get(),
+            "description": self.description_column_var.get(),
+            "link": self.link_column_var.get(),
+        }
         file_key = str(Path(self.csv_var.get()).resolve())
         file_state = state.setdefault(file_key, {})
         done = 0
@@ -647,7 +698,7 @@ class BloggerApp:
         errors = 0
         candidates = []
         for i, row in enumerate(self.rows, start=1):
-            item = product_data(row, i)
+            item = product_data(row, i, self.column_map)
             if item["key"] in file_state:
                 skipped += 1
                 continue
