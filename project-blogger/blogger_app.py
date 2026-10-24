@@ -196,10 +196,11 @@ def product_data(row, index, column_map=None):
     image = mapped("image", ["Image Url", "Image URL", "Image", "ImageUrl", "Main Image"])
     video = mapped("video", ["Video Url", "Video URL", "VideoUrl", "Video", "Video Link", "Video Link URL", "Product Video", "Image/Video Url", "Image/Video URL"])
     link = mapped("link", ["Promotion Url", "Promotion URL", "Product Url", "Product URL", "Affiliate Link", "Buy Link", "Link", "URL"])
+    category = mapped("category", ["Category", "Categories", "Product Category", "Product Categories", "Blog Category", "Label", "Labels", "Tags"])
     product_id = get_value(row, ["ProductId", "Product ID", "Item ID", "ID"])
     stable = product_id or link or title
     fingerprint = hashlib.sha256(stable.encode("utf-8", errors="ignore")).hexdigest()
-    return {"title": title, "description": description, "hashtags": hashtags, "image": image, "video": video, "link": link, "key": fingerprint}
+    return {"title": title, "description": description, "hashtags": hashtags, "image": image, "video": video, "link": link, "category": category, "key": fingerprint}
 
 def make_html(item):
     # Blogger post body: readable description, visible hashtags, and a styled CTA button.
@@ -294,12 +295,13 @@ class BloggerApp:
         self.blog_map = {}
         self.rows = []
         self.csv_headers = []
-        self.column_map = {"title": "(Auto-detect)", "image": "(Auto-detect)", "video": "(Auto-detect)", "description": "(Auto-detect)", "link": "(Auto-detect)"}
+        self.column_map = {"title": "(Auto-detect)", "image": "(Auto-detect)", "video": "(Auto-detect)", "description": "(Auto-detect)", "link": "(Auto-detect)", "category": "(Auto-detect)"}
         self.title_column_var = tk.StringVar(value="(Auto-detect)")
         self.image_column_var = tk.StringVar(value="(Auto-detect)")
         self.video_column_var = tk.StringVar(value="(Auto-detect)")
         self.description_column_var = tk.StringVar(value="(Auto-detect)")
         self.link_column_var = tk.StringVar(value="(Auto-detect)")
+        self.category_column_var = tk.StringVar(value="(Auto-detect)")
         self.connected = False
         fb_config = self.load_facebook_config()
         self.facebook_user_token_var = tk.StringVar(value="")
@@ -377,7 +379,8 @@ class BloggerApp:
             ("Photo / Image URL", "image", self.image_column_var),
             ("Video URL / Video link", "video", self.video_column_var),
             ("Description", "description", self.description_column_var),
-            ("Buy link / Shopping URL", "link", self.link_column_var),
+            ("Any URL / Buy link", "link", self.link_column_var),
+            ("Blogger Category / Label", "category", self.category_column_var),
         ]:
             column_row = ttk.Frame(outer)
             column_row.pack(fill="x", pady=2)
@@ -646,9 +649,10 @@ class BloggerApp:
                 "video": ["video url", "videourl", "video", "video link", "product video", "video link url"],
                 "description": ["seo_description", "seo description", "description", "product description", "product desc", "details"],
                 "link": ["promotion url", "product url", "affiliate link", "buy link", "link", "url"],
+                "category": ["category", "categories", "product category", "product categories", "blog category", "label", "labels"],
             }
             variables = {"title": self.title_column_var, "image": self.image_column_var,
-                         "video": self.video_column_var, "description": self.description_column_var, "link": self.link_column_var}
+                         "video": self.video_column_var, "description": self.description_column_var, "link": self.link_column_var, "category": self.category_column_var}
             for key, names in suggestions.items():
                 match = next((h for h in self.csv_headers if str(h).strip().lower() in names), None)
                 variables[key].set(match if match else "(Auto-detect)")
@@ -707,6 +711,7 @@ class BloggerApp:
             "video": self.video_column_var.get(),
             "description": self.description_column_var.get(),
             "link": self.link_column_var.get(),
+            "category": self.category_column_var.get(),
         }
         file_key = str(Path(self.csv_var.get()).resolve())
         file_state = state.setdefault(file_key, {})
@@ -734,7 +739,11 @@ class BloggerApp:
                         item["hashtags"] = gemini_hashtags(item["title"], item["description"], gemini_key)
                     except Exception as gemini_error:
                         self.root.after(0, lambda msg=str(gemini_error): self.status_var.set("Gemini failed; using fallback hashtags. " + msg[:150]))
+                labels = [clean(x) for x in re.split(r"[,;|]", item.get("category", "")) if clean(x)]
+                labels = list(dict.fromkeys(labels))[:20]
                 body = {"kind": "blogger#post", "blog": {"id": blog["id"]}, "title": item["title"], "content": make_html(item)}
+                if labels:
+                    body["labels"] = labels
                 result = SERVICE.posts().insert(blogId=blog["id"], body=body, isDraft=(mode == "draft")).execute()
                 social_notes = []
                 caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}\n\n{result.get('url', '')}".strip()
