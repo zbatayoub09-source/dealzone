@@ -48,13 +48,19 @@ def meta_post(endpoint, params, base=GRAPH_BASE):
 
 def publish_instagram(item, page, caption):
     image_url = str(item.get("image", "") or "").strip()
-    if not image_url.startswith("https://"):
-        raise RuntimeError("Instagram kay7taj Image URL public b HTTPS f had l-version.")
+    video_url = str(item.get("video", "") or "").strip()
+    if video_url.startswith("https://"):
+        media_params = {"media_type": "REELS", "video_url": video_url, "caption": caption[:2200]}
+    elif image_url.startswith("https://"):
+        media_params = {"image_url": image_url, "caption": caption[:2200]}
+    else:
+        raise RuntimeError("Instagram kay7taj lien public HTTPS dyal tswira ola video.")
     ig_id = str((page.get("instagram_business_account") or {}).get("id", "")).strip()
     page_token = str(page.get("access_token", "")).strip()
     if not ig_id or not page_token:
         raise RuntimeError("Had Facebook Page ma مربوطةش b Instagram Professional, ola token ma fihch access.")
-    container = meta_post(f"{ig_id}/media", {"image_url": image_url, "caption": caption[:2200], "access_token": page_token})
+    media_params["access_token"] = page_token
+    container = meta_post(f"{ig_id}/media", media_params)
     creation_id = container.get("id")
     if not creation_id:
         raise RuntimeError("Instagram ma rje3ch media container ID.")
@@ -65,8 +71,11 @@ def publish_instagram(item, page, caption):
 
 def publish_threads(item, user_id, token, caption):
     image_url = str(item.get("image", "") or "").strip()
+    video_url = str(item.get("video", "") or "").strip()
     params = {"access_token": token, "text": caption[:500]}
-    if image_url.startswith("https://"):
+    if video_url.startswith("https://"):
+        params.update({"media_type": "VIDEO", "video_url": video_url})
+    elif image_url.startswith("https://"):
         params.update({"media_type": "IMAGE", "image_url": image_url})
     else:
         params.update({"media_type": "TEXT"})
@@ -185,11 +194,12 @@ def product_data(row, index, column_map=None):
     description = make_seo_description(title, description if description != title else "")
     hashtags = make_hashtags(title, get_value(row, ["Hashtags", "SEO_Hashtags", "Tags"]))
     image = mapped("image", ["Image Url", "Image URL", "Image", "ImageUrl", "Main Image"])
-    link = mapped("link", ["Promotion Url", "Promotion URL", "Product Url", "Product URL", "Affiliate Link", "Link", "URL"])
+    video = mapped("video", ["Video Url", "Video URL", "VideoUrl", "Video", "Video Link", "Video Link URL", "Product Video", "Image/Video Url", "Image/Video URL"])
+    link = mapped("link", ["Promotion Url", "Promotion URL", "Product Url", "Product URL", "Affiliate Link", "Buy Link", "Link", "URL"])
     product_id = get_value(row, ["ProductId", "Product ID", "Item ID", "ID"])
     stable = product_id or link or title
     fingerprint = hashlib.sha256(stable.encode("utf-8", errors="ignore")).hexdigest()
-    return {"title": title, "description": description, "hashtags": hashtags, "image": image, "link": link, "key": fingerprint}
+    return {"title": title, "description": description, "hashtags": hashtags, "image": image, "video": video, "link": link, "key": fingerprint}
 
 def make_html(item):
     # Blogger post body: readable description, visible hashtags, and a styled CTA button.
@@ -199,6 +209,9 @@ def make_html(item):
         "<h3>Product Details</h3>",
         f"<p>{html.escape(item['description'])}</p>",
     ]
+    if item.get("video", "").startswith(("https://", "http://")):
+        video_url = html.escape(item["video"], quote=True)
+        parts.append(f'<p><a href="{video_url}" target="_blank" rel="noopener">▶ Watch product video</a></p>')
     if item["image"].startswith(("https://", "http://")):
         image_html = f'<img src="{html.escape(item["image"], quote=True)}" alt="{html.escape(item["title"], quote=True)}" style="max-width:100%;height:auto;border:0">'
         if item["link"].startswith(("https://", "http://")):
@@ -281,9 +294,10 @@ class BloggerApp:
         self.blog_map = {}
         self.rows = []
         self.csv_headers = []
-        self.column_map = {"title": "(Auto-detect)", "image": "(Auto-detect)", "description": "(Auto-detect)", "link": "(Auto-detect)"}
+        self.column_map = {"title": "(Auto-detect)", "image": "(Auto-detect)", "video": "(Auto-detect)", "description": "(Auto-detect)", "link": "(Auto-detect)"}
         self.title_column_var = tk.StringVar(value="(Auto-detect)")
         self.image_column_var = tk.StringVar(value="(Auto-detect)")
+        self.video_column_var = tk.StringVar(value="(Auto-detect)")
         self.description_column_var = tk.StringVar(value="(Auto-detect)")
         self.link_column_var = tk.StringVar(value="(Auto-detect)")
         self.connected = False
@@ -361,6 +375,7 @@ class BloggerApp:
         for label, key, variable in [
             ("Title / Product name", "title", self.title_column_var),
             ("Photo / Image URL", "image", self.image_column_var),
+            ("Video URL / Video link", "video", self.video_column_var),
             ("Description", "description", self.description_column_var),
             ("Buy link / Shopping URL", "link", self.link_column_var),
         ]:
@@ -628,15 +643,16 @@ class BloggerApp:
             suggestions = {
                 "title": ["product title", "title", "product name", "name", "product desc", "product description"],
                 "image": ["image url", "imageurl", "image/video url", "image", "photo", "photo_url"],
+                "video": ["video url", "videourl", "video", "video link", "product video", "video link url"],
                 "description": ["seo_description", "seo description", "description", "product description", "product desc", "details"],
                 "link": ["promotion url", "product url", "affiliate link", "buy link", "link", "url"],
             }
             variables = {"title": self.title_column_var, "image": self.image_column_var,
-                         "description": self.description_column_var, "link": self.link_column_var}
+                         "video": self.video_column_var, "description": self.description_column_var, "link": self.link_column_var}
             for key, names in suggestions.items():
                 match = next((h for h in self.csv_headers if str(h).strip().lower() in names), None)
                 variables[key].set(match if match else "(Auto-detect)")
-            self.status_var.set(f"CSV ready: {len(self.rows)} products. Review the 4 column selections, including Buy link, before publishing.")
+            self.status_var.set(f"CSV ready: {len(self.rows)} products. Review the column selections, including Video URL and Buy link, before publishing.")
         except Exception as e:
             messagebox.showerror("CSV error", str(e))
 
@@ -688,6 +704,7 @@ class BloggerApp:
         self.column_map = {
             "title": self.title_column_var.get(),
             "image": self.image_column_var.get(),
+            "video": self.video_column_var.get(),
             "description": self.description_column_var.get(),
             "link": self.link_column_var.get(),
         }
