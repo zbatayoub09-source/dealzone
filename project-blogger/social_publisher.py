@@ -423,7 +423,7 @@ class SocialPublisher:
                 for row,item in prepared:
                     if item["key"] in done:continue
                     video=item.get("video","").strip();image=item.get("image","").strip();media=self.media_mode.get()
-                    ig_mode=("video" if media=="Video only" else "image" if media=="Image only" else "text" if media=="Text only" else "video" if video.startswith("https://") else "image" if image.startswith("https://") else "text")
+                    ig_mode=("video" if media=="Video only" else "image" if media=="Image only" else "text" if media=="Text only" else "image" if image.startswith("https://") else "video" if video.startswith("https://") else "text")
                     if ig_mode=="text":
                         errors.append(f"Instagram / {page.get('name')}: public HTTPS image ola video URL khas.");continue
                     bio_url=self.links_page_url.get().strip()
