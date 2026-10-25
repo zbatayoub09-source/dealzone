@@ -2,7 +2,9 @@ import csv
 import hashlib
 import html
 import json
+import os
 import re
+import tempfile
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -57,6 +59,81 @@ def api_get(base, endpoint, params, label="API"):
         err = data["error"]
         raise RuntimeError(f"{label} ({err.get('code')}): {err.get('message', 'API error')}")
     return data
+
+
+def publish_youtube(item, token_path):
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+
+    token_file = Path(token_path).expanduser()
+    if not token_file.is_file():
+        raise RuntimeError("YouTube token JSON ma l9itouch.")
+    try:
+        creds = Credentials.from_authorized_user_file(str(token_file))
+    except Exception as e:
+        raise RuntimeError(f"YouTube token JSON ma tqrachch: {e}")
+    required_scope = "https://www.googleapis.com/auth/youtube.upload"
+    if creds.scopes and required_scope not in creds.scopes:
+        raise RuntimeError("Token ma fihch youtube.upload. Khass OAuth token b YouTube upload permission.")
+    if not creds.valid:
+        if creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+                token_file.write_text(creds.to_json(), encoding="utf-8")
+            except Exception as e:
+                raise RuntimeError(f"YouTube token expired w refresh failed: {e}")
+        else:
+            raise RuntimeError("YouTube token ma validch ola ma fihch refresh_token. Khass OAuth token jdida.")
+
+    video_url = (item.get("video") or "").strip()
+    if not video_url.startswith(("https://", "http://")):
+        raise RuntimeError("Product ma fihch Video URL direct. Upload YouTube khas video file, machi image.")
+    suffix = Path(urllib.parse.urlparse(video_url).path).suffix.lower()
+    if suffix not in (".mp4", ".mov", ".mpeg", ".mpg", ".avi", ".wmv", ".flv", ".webm", ".3gp", ".m4v"):
+        suffix = ".mp4"
+    tmp_path = None
+    try:
+        request = urllib.request.Request(video_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(request, timeout=90) as response:
+            content_type = response.headers.get("Content-Type", "")
+            if "text/html" in content_type.lower():
+                raise RuntimeError("Video URL kay7ell page HTML, machi direct video link.")
+            with tempfile.NamedTemporaryFile(prefix="dealzone_youtube_", suffix=suffix, delete=False) as tmp:
+                tmp_path = tmp.name
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    tmp.write(chunk)
+        if os.path.getsize(tmp_path) < 1024:
+            raise RuntimeError("Video download khawi ola sghir بزاف.")
+        youtube = build("youtube", "v3", credentials=creds, cache_discovery=False)
+        description = (item.get("description", "") + "\n\n" + item.get("hashtags", "") +
+                       ("\n\nProduct link: " + item["link"] if item.get("link") else ""))
+        body = {
+            "snippet": {
+                "title": (item.get("title") or "DealZone video")[:100],
+                "description": description[:5000],
+                "tags": re.findall(r"[A-Za-z0-9_]+", item.get("hashtags", ""))[:30],
+                "categoryId": "22"
+            },
+            "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
+        }
+        media = MediaFileUpload(tmp_path, mimetype=content_type if content_type.startswith("video/") else "video/mp4",
+                                chunksize=8 * 1024 * 1024, resumable=True)
+        upload = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+        result = None
+        while result is None:
+            status, result = upload.next_chunk()
+        return result.get("id", "OK")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 def publish_threads(item, user_id, token):
@@ -183,6 +260,8 @@ class SocialPublisher:
         self.output_dir=tk.StringVar(value=str(APP_DIR/"output"))
         self.facebook_token=tk.StringVar(); self.facebook_page_id=tk.StringVar()
         self.threads_user_id=tk.StringVar(); self.threads_token=tk.StringVar()
+        default_youtube_token = APP_DIR / "youtube_token.json"
+        self.youtube_token_path=tk.StringVar(value=str(default_youtube_token) if default_youtube_token.exists() else "")
         self.use_ai=tk.BooleanVar(value=False); self.gemini_key=tk.StringVar()
         self.build()
 
@@ -232,6 +311,12 @@ class SocialPublisher:
         ttk.Label(main,text="Threads Access Token:").pack(anchor="w",pady=(6,2))
         ttk.Entry(main,textvariable=self.threads_token,show="*").pack(fill="x")
 
+        ttk.Label(main,text="YouTube OAuth token JSON (youtube_token.json)").pack(anchor="w",pady=(12,3))
+        yr=ttk.Frame(main); yr.pack(fill="x")
+        ttk.Entry(yr,textvariable=self.youtube_token_path,state="readonly").pack(side="left",fill="x",expand=True)
+        ttk.Button(yr,text="Upload / Choose token file",command=self.choose_youtube_token).pack(side="left",padx=(8,0))
+        ttk.Label(main,text="Token kayb9a f PC dyalek; ma kaytla3ch l-GitHub. Khass token fih YouTube upload permission.",wraplength=900).pack(anchor="w",pady=(3,2))
+
         ttk.Label(main,text="Gemini AI (ikhtiyari)").pack(anchor="w",pady=(12,3))
         ttk.Checkbutton(main,text="Generate SEO title + description + hashtags",variable=self.use_ai).pack(anchor="w")
         ttk.Entry(main,textvariable=self.gemini_key,show="*").pack(fill="x",pady=4)
@@ -261,6 +346,18 @@ class SocialPublisher:
     def choose_output(self):
         p=filedialog.askdirectory(title="Choose output folder")
         if p:self.output_dir.set(p)
+
+    def choose_youtube_token(self):
+        p=filedialog.askopenfilename(title="Choose YouTube OAuth token JSON",filetypes=[("JSON files","*.json"),("All files","*.*")])
+        if not p:return
+        try:
+            data=json.loads(Path(p).read_text(encoding="utf-8"))
+            if not isinstance(data,dict) or not (data.get("refresh_token") or data.get("token")):
+                raise ValueError("Had JSON ma kaybanch OAuth token. Khtar youtube_token.json, machi client_secret.json.")
+            self.youtube_token_path.set(p)
+            self.status.set("YouTube token file selected.")
+        except Exception as e:
+            messagebox.showerror("YouTube token file",str(e))
 
     def preview_first(self):
         if not self.rows:
@@ -323,6 +420,8 @@ class SocialPublisher:
             selected=[self.facebook_pages[i] for i in chosen]
         if "Threads" in platforms and (not self.threads_user_id.get().strip() or not self.threads_token.get().strip()):
             messagebox.showwarning("Threads","Dkhel Threads User ID w Access Token.");return
+        if "YouTube" in platforms and not self.youtube_token_path.get().strip():
+            messagebox.showwarning("YouTube token","Klik Upload / Choose token file w khtar youtube_token.json.");return
         try:limit=max(1,int(self.limit.get()))
         except ValueError:
             messagebox.showerror("Limit","Dkhel ra9m sahih.");return
@@ -330,7 +429,7 @@ class SocialPublisher:
         out=Path(self.output_dir.get()).expanduser();out.mkdir(parents=True,exist_ok=True)
         prepared=[(row,make_item(row,i,key)) for i,row in enumerate(self.rows[:limit],1)]
         state_path=out/"social_checkpoint.json";state=load_json(state_path)
-        fb_done=state.setdefault("facebook",{});ig_done=state.setdefault("instagram",{});th_done=state.setdefault("threads",{})
+        fb_done=state.setdefault("facebook",{});ig_done=state.setdefault("instagram",{});th_done=state.setdefault("threads",{});yt_done=state.setdefault("youtube",{})
         counts={p:0 for p in PLATFORMS};errors=[]
 
         if "Facebook" in platforms:
@@ -372,9 +471,19 @@ class SocialPublisher:
                     done[item["key"]]=publish_threads(item,uid,token);counts["Threads"]+=1;save_json(state_path,state)
                 except Exception as e:errors.append(f"Threads: {e}")
 
-        # For platforms without a direct API configured in this app, always produce ready CSVs.
+        if "YouTube" in platforms:
+            token_path=self.youtube_token_path.get().strip()
+            done=yt_done.setdefault(str(Path(token_path).expanduser().resolve()),{})
+            for row,item in prepared:
+                if item["key"] in done:continue
+                try:
+                    video_id=publish_youtube(item,token_path)
+                    done[item["key"]]=video_id;counts["YouTube"]+=1;save_json(state_path,state)
+                except Exception as e:errors.append("YouTube / " + item["title"][:45] + ": " + str(e))
+
+        # Platforms without direct publishing support produce ready CSV files.
         for p in platforms:
-            if p in ("Facebook","Instagram","Threads"):continue
+            if p in ("Facebook","Instagram","Threads","YouTube"):continue
             rows=[]
             for row,item in prepared:
                 rows.append({"Platform":p,"ProductId":item["pid"],"Title":item["title"],"Text":f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}","Description":item["description"],"Hashtags":item["hashtags"],"Image Url":item["image"],"Video Url":item["video"],"Promotion Url":item["link"],"Deduplication Key":item["key"]})
