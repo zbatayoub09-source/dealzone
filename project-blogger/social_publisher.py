@@ -13,7 +13,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_DIR = Path(__file__).resolve().parent
-PLATFORMS = ["Facebook", "Instagram", "Threads", "TikTok", "YouTube", "Pinterest"]
+PLATFORMS = ["Facebook", "Instagram", "Threads", "TikTok", "Pinterest"]
 GRAPH_BASE = "https://graph.facebook.com/v26.0"
 THREADS_BASE = "https://graph.threads.net/v1.0"
 
@@ -166,7 +166,9 @@ def clean(v):
     return re.sub(r"\s+", " ", v).strip()
 
 
-def field(row, names):
+def field(row, names, chosen=""):
+    if chosen and chosen != "(Auto-detect)" and chosen in row and clean(row.get(chosen)):
+        return clean(row.get(chosen))
     lookup = {str(k).strip().lower(): k for k in row if k is not None}
     for name in names:
         k = lookup.get(name.lower())
@@ -212,11 +214,12 @@ def gemini_copy(title, key):
     return clean(result.get("title"))[:180] or title, clean(result.get("description"))[:2000], tags
 
 
-def make_item(row, index, gemini_key=""):
-    title = field(row, ["Product Title","Title","Product Name","Name","Product Desc","Product Description","Description","Product"])
+def make_item(row, index, gemini_key="", columns=None):
+    columns = columns or {}
+    title = field(row, ["Product Title","Title","Product Name","Name","Product Desc","Product Description","Description","Product"], columns.get("title", ""))
     title = (title or f"DealZone product {index}")[:180]
-    desc = field(row, ["SEO_Description","SEO Description","Product Description","Product Desc","Description"])
-    tags = " ".join(re.findall(r"#[A-Za-z0-9_]+", field(row, ["Hashtags","SEO_Hashtags","Tags"])))
+    desc = field(row, ["SEO_Description","SEO Description","Product Description","Product Desc","Description"], columns.get("description", ""))
+    tags = " ".join(re.findall(r"#[A-Za-z0-9_]+", field(row, ["Hashtags","SEO_Hashtags","Tags"], columns.get("hashtags", ""))))
     if gemini_key:
         title, desc, tags = gemini_copy(title, gemini_key)
     else:
@@ -227,12 +230,13 @@ def make_item(row, index, gemini_key=""):
             words = [w for w in words if len(w) >= 3]
             tags = " ".join("#" + w for w in list(dict.fromkeys(words))[:5] + ["DealZone","ProductFinds"])
     tags = " ".join(list(dict.fromkeys(re.findall(r"#[A-Za-z0-9_]+", tags)))[:8])
-    image = field(row, ["Image Url","Image URL","Image","ImageUrl","Main Image"])
-    video = field(row, ["Video Url","Video URL","Video","VideoUrl","Product Video"])
-    link = field(row, ["Promotion Url","Promotion URL","Product Url","Product URL","Affiliate Link","Link","URL"])
+    image = field(row, ["Image Url","Image URL","Image","ImageUrl","Main Image","Image/Video Url"], columns.get("image", ""))
+    video = field(row, ["Video Url","Video URL","Video","VideoUrl","Product Video","Video Link"], columns.get("video", ""))
+    link = field(row, ["Promotion Url","Promotion URL","Product Url","Product URL","Affiliate Link","Link","URL"], columns.get("link", ""))
+    comment = field(row, ["Comment","Commentaire","Post Comment","Facebook Comment"], columns.get("comment", ""))
     pid = field(row, ["ProductId","Product ID","Item ID","ID"])
     key = hashlib.sha256((pid or link or title).encode("utf-8", errors="ignore")).hexdigest()
-    return {"title":title,"description":desc[:2000],"hashtags":tags,"image":image,"video":video,"link":link,"key":key,"pid":pid}
+    return {"title":title,"description":desc[:2000],"hashtags":tags,"image":image,"video":video,"link":link,"comment":comment,"key":key,"pid":pid}
 
 
 def save_json(path, data):
@@ -260,6 +264,9 @@ class SocialPublisher:
         root.geometry("980x760")
         root.minsize(760, 500)
         self.rows=[]; self.headers=[]; self.facebook_pages=[]; self.pages_list=None
+        self.columns={k:tk.StringVar(value="(Auto-detect)") for k in ("title","description","image","video","link","hashtags","comment")}
+        self.column_combos={}
+        self.media_mode=tk.StringVar(value="Automatic")
         self.selected={p:tk.BooleanVar(value=p in ("Facebook","Instagram","Pinterest")) for p in PLATFORMS}
         self.csv_var=tk.StringVar(value="Ma khtart ta CSV")
         self.status=tk.StringVar(value="Khtar CSV bach tbda.")
@@ -296,7 +303,16 @@ class SocialPublisher:
         ttk.Entry(r,textvariable=self.csv_var,state="readonly").pack(side="left",fill="x",expand=True)
         ttk.Button(r,text="Choose CSV",command=self.choose_csv).pack(side="left",padx=(8,0))
 
-        ttk.Label(main,text="2. Khtar fin bghiti tnشر",font=("Segoe UI",11,"bold")).pack(anchor="w",pady=(12,4))
+        ttk.Label(main,text="2. CSV column mapping",font=("Segoe UI",11,"bold")).pack(anchor="w",pady=(12,4))
+        for label,key in [("Title / العنوان","title"),("Description / الوصف","description"),("Image URL / الصورة","image"),("Video URL / الفيديو","video"),("Product link / الرابط","link"),("Hashtags","hashtags"),("Commentaire / التعليق","comment")]:
+            cr=ttk.Frame(main); cr.pack(fill="x",pady=2)
+            ttk.Label(cr,text=label,width=24).pack(side="left")
+            cb=ttk.Combobox(cr,textvariable=self.columns[key],values=["(Auto-detect)"],state="readonly")
+            cb.pack(side="left",fill="x",expand=True); self.column_combos[key]=cb
+        ttk.Label(main,text="Media mode").pack(anchor="w",pady=(8,2))
+        ttk.Combobox(main,textvariable=self.media_mode,values=["Automatic","Image only","Video only","Text only"],state="readonly").pack(fill="x")
+        ttk.Label(main,text="Automatic = video first, then image, otherwise text.").pack(anchor="w",pady=(2,4))
+        ttk.Label(main,text="3. Khtar fin bghiti tnشر",font=("Segoe UI",11,"bold")).pack(anchor="w",pady=(12,4))
         pf=ttk.Frame(main); pf.pack(fill="x")
         for i,p in enumerate(PLATFORMS):
             ttk.Checkbutton(pf,text=p,variable=self.selected[p]).grid(row=i//3,column=i%3,sticky="w",padx=(0,35),pady=4)
@@ -318,41 +334,6 @@ class SocialPublisher:
         ttk.Entry(main,textvariable=self.threads_user_id).pack(fill="x")
         ttk.Label(main,text="Threads Access Token:").pack(anchor="w",pady=(6,2))
         ttk.Entry(main,textvariable=self.threads_token,show="*").pack(fill="x")
-
-        ttk.Label(main,text="YouTube OAuth token (paste access token ola khtar token JSON file)").pack(anchor="w",pady=(12,3))
-        yr=ttk.Frame(main); yr.pack(fill="x")
-        ttk.Entry(yr,textvariable=self.youtube_token_path,show="*").pack(side="left",fill="x",expand=True)
-        ttk.Button(yr,text="Choose token JSON",command=self.choose_youtube_token).pack(side="left",padx=(8,0))
-        ttk.Label(main,text="T9der tlssa9 Google OAuth access token (ghaliban kaybda ya29.) ola tkhtar youtube_token.json. Token kayb9a ghir f PC dyalek. Access token li tlssa9 kay9der ysali; token JSON li fih refresh_token afdal.",wraplength=900).pack(anchor="w",pady=(3,2))
-
-        ttk.Label(main,text="YouTube: khtar product w raje3 Title / Description / Affiliate Link",font=("Segoe UI",11,"bold")).pack(anchor="w",pady=(10,4))
-        self.youtube_product_var=tk.StringVar(value="")
-        self.youtube_title_var=tk.StringVar()
-        self.youtube_link_var=tk.StringVar()
-        self.youtube_description_widget=None
-        self.youtube_video_var=tk.StringVar()
-        self.youtube_product_combo=ttk.Combobox(main,textvariable=self.youtube_product_var,state="readonly")
-        self.youtube_product_combo.pack(fill="x",pady=3)
-        self.youtube_product_combo.bind("<<ComboboxSelected>>",self.select_youtube_product)
-        ttk.Label(main,text="YouTube Title").pack(anchor="w",pady=(5,2))
-        ttk.Entry(main,textvariable=self.youtube_title_var).pack(fill="x")
-        ttk.Label(main,text="YouTube Description").pack(anchor="w",pady=(5,2))
-        self.youtube_description_widget=tk.Text(main,height=5,wrap="word")
-        self.youtube_description_widget.pack(fill="x")
-        ttk.Label(main,text="Affiliate Link (Promotion Url)").pack(anchor="w",pady=(5,2))
-        ttk.Entry(main,textvariable=self.youtube_link_var).pack(fill="x")
-        ttk.Label(main,text="CSV column dyal YouTube comment (ikhtiyari)").pack(anchor="w",pady=(5,2))
-        self.youtube_comment_column_var=tk.StringVar(value="")
-        self.youtube_comment_combo=ttk.Combobox(main,textvariable=self.youtube_comment_column_var,state="readonly")
-        self.youtube_comment_combo.pack(fill="x")
-        self.youtube_comment_combo.bind("<<ComboboxSelected>>",self.select_youtube_comment_column)
-        ttk.Label(main,text="Commentaire li ghadi ythatt ta7t video").pack(anchor="w",pady=(5,2))
-        self.youtube_comment_widget=tk.Text(main,height=3,wrap="word")
-        self.youtube_comment_widget.pack(fill="x")
-        ttk.Label(main,text="Video URL (direct video file)").pack(anchor="w",pady=(5,2))
-        ttk.Entry(main,textvariable=self.youtube_video_var).pack(fill="x")
-        ttk.Button(main,text="Publish this YouTube product",command=self.publish_youtube_edited).pack(anchor="w",pady=(8,3))
-        ttk.Label(main,text="Had lزر kaynشر ghir product li khtarti, b Title/Description/Link li 3deltihom. Video URL khas ykoun direct.",wraplength=900).pack(anchor="w",pady=(2,4))
 
         ttk.Label(main,text="Instagram bio link page URL (optional)").pack(anchor="w",pady=(10,3))
         ttk.Entry(main,textvariable=self.links_page_url).pack(fill="x")
@@ -381,7 +362,15 @@ class SocialPublisher:
         p=filedialog.askopenfilename(title="Choose AliExpress CSV",filetypes=[("CSV files","*.csv"),("All files","*.*")])
         if not p:return
         try:
-            self.rows,self.headers=load_csv(p); self.csv_var.set(p); self.status.set(f"CSV wajed: {len(self.rows)} products."); self.preview_first()
+            self.rows,self.headers=load_csv(p); self.csv_var.set(p)
+            choices=["(Auto-detect)"]+self.headers
+            defaults={"title":["Product Title","Title","Product Name","Name","Product Desc","Product Description"],"description":["SEO_Description","SEO Description","Description","Product Description","Product Desc"],"image":["Image Url","Image URL","Image","ImageUrl","Main Image","Image/Video Url"],"video":["Video Url","Video URL","Video","VideoUrl","Product Video","Video Link"],"link":["Promotion Url","Promotion URL","Product Url","Product URL","Affiliate Link","Link","URL"],"hashtags":["Hashtags","SEO_Hashtags","Tags"],"comment":["Comment","Commentaire","Post Comment","Facebook Comment"]}
+            lower={str(h).strip().lower():h for h in self.headers}
+            for key,combo in self.column_combos.items():
+                combo["values"]=choices
+                self.columns[key].set(next((lower[n.lower()] for n in defaults[key] if n.lower() in lower),"(Auto-detect)"))
+            self.status.set(f"CSV wajed: {len(self.rows)} products / {len(self.headers)} columns.")
+            self.preview_first()
         except Exception as e: messagebox.showerror("CSV error",str(e))
 
     def choose_output(self):
@@ -500,7 +489,7 @@ class SocialPublisher:
             messagebox.showwarning("CSV","Khtar CSV lwl.");return
         try:
             key=self.gemini_key.get().strip() if self.use_ai.get() else ""
-            item=make_item(self.rows[0],1,key)
+            item=make_item(self.rows[0],1,key,{k:v.get() for k,v in self.columns.items()})
             self.preview.delete("1.0","end")
             self.preview.insert("end",f"TITLE\n{item['title']}\n\nDESCRIPTION\n{item['description']}\n\nHASHTAGS\n{item['hashtags']}\n\nIMAGE\n{item['image']}\n\nVIDEO\n{item['video'] or '(none)'}\n\nLINK\n{item['link']}")
         except Exception as e: messagebox.showerror("Preview error",str(e))
@@ -556,18 +545,17 @@ class SocialPublisher:
             selected=[self.facebook_pages[i] for i in chosen]
         if "Threads" in platforms and (not self.threads_user_id.get().strip() or not self.threads_token.get().strip()):
             messagebox.showwarning("Threads","Dkhel Threads User ID w Access Token.");return
-        if "YouTube" in platforms and not self.youtube_token_path.get().strip():
-            messagebox.showwarning("YouTube token","Paste Google OAuth access token ola khtar youtube_token.json.");return
         try:limit=max(1,int(self.limit.get()))
         except ValueError:
             messagebox.showerror("Limit","Dkhel ra9m sahih.");return
         key=self.gemini_key.get().strip() if self.use_ai.get() else ""
         out=Path(self.output_dir.get()).expanduser();out.mkdir(parents=True,exist_ok=True)
-        prepared=[(row,make_item(row,i,key)) for i,row in enumerate(self.rows[:limit],1)]
+        columns={k:v.get() for k,v in self.columns.items()}
+        prepared=[(row,make_item(row,i,key,columns)) for i,row in enumerate(self.rows[:limit],1)]
         # Generate a link-in-bio landing page for all CSV products, not just this run's limit.
         html_cards=[]
         for i,row in enumerate(self.rows,1):
-            it=make_item(row,i,"")
+            it=make_item(row,i,"",columns)
             if not it.get("link"):
                 continue
             image_html = ""
@@ -589,9 +577,19 @@ class SocialPublisher:
                     if item["link"]:caption+=f"\n\nShop link: {item['link']}"
                     try:
                         if item["image"].startswith(("https://","http://")):
-                            api_post(GRAPH_BASE,f"{pid}/photos",{"url":item["image"],"caption":caption,"access_token":page.get("access_token","")},"Facebook API")
-                        else:
-                            api_post(GRAPH_BASE,f"{pid}/feed",{"message":caption,"access_token":page.get("access_token","")},"Facebook API")
+                            media=self.media_mode.get()
+                            video=item.get("video","").strip(); image=item.get("image","").strip()
+                            mode=("video" if media=="Video only" else "image" if media=="Image only" else "text" if media=="Text only" else "video" if video.startswith(("https://","http://")) else "image" if image.startswith(("https://","http://")) else "text")
+                            if mode=="video":
+                                posted=api_post(GRAPH_BASE,f"{pid}/videos",{"file_url":video,"description":caption,"access_token":page.get("access_token","")},"Facebook video API")
+                            elif mode=="image":
+                                posted=api_post(GRAPH_BASE,f"{pid}/photos",{"url":image,"caption":caption,"access_token":page.get("access_token","")},"Facebook API")
+                            else:
+                                posted=api_post(GRAPH_BASE,f"{pid}/feed",{"message":caption,"access_token":page.get("access_token","")},"Facebook API")
+                            post_id=posted.get("post_id") or posted.get("id")
+                            if not post_id: raise RuntimeError("Facebook ma rje3ch post ID.")
+                            if item.get("comment"):
+                                api_post(GRAPH_BASE,f"{post_id}/comments",{"message":item["comment"],"access_token":page.get("access_token","")},"Facebook comment API")
                         done[item["key"]]=1;counts["Facebook"]+=1;save_json(state_path,state)
                     except Exception as e:errors.append(f"Facebook / {page.get('name')}: {e}")
 
@@ -621,19 +619,9 @@ class SocialPublisher:
                     done[item["key"]]=publish_threads(item,uid,token);counts["Threads"]+=1;save_json(state_path,state)
                 except Exception as e:errors.append(f"Threads: {e}")
 
-        if "YouTube" in platforms:
-            token_path=self.youtube_token_path.get().strip()
-            done=yt_done.setdefault(str(Path(token_path).expanduser().resolve()),{})
-            for row,item in prepared:
-                if item["key"] in done:continue
-                try:
-                    video_id=publish_youtube(item,token_path)
-                    done[item["key"]]=video_id;counts["YouTube"]+=1;save_json(state_path,state)
-                except Exception as e:errors.append("YouTube / " + item["title"][:45] + ": " + str(e))
-
         # Platforms without direct publishing support produce ready CSV files.
         for p in platforms:
-            if p in ("Facebook","Instagram","Threads","YouTube"):continue
+            if p in ("Facebook","Instagram","Threads"):continue
             rows=[]
             for row,item in prepared:
                 rows.append({"Platform":p,"ProductId":item["pid"],"Title":item["title"],"Text":f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}","Description":item["description"],"Hashtags":item["hashtags"],"Image Url":item["image"],"Video Url":item["video"],"Promotion Url":item["link"],"Deduplication Key":item["key"]})
