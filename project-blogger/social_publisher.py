@@ -293,13 +293,6 @@ class SocialPublisher:
         p=filedialog.askdirectory(title="Choose output folder")
         if p:self.output_dir.set(p)
 
-    def choose_csv(self):
-        p=filedialog.askopenfilename(title="Choose AliExpress CSV",filetypes=[("CSV files","*.csv"),("All files","*.*")])
-        if not p:return
-        try:
-            self.rows,self.headers=load_csv(p); self.csv_var.set(p); self.status.set(f"CSV wajed: {len(self.rows)} products."); self.preview_first()
-        except Exception as e: messagebox.showerror("CSV error",str(e))
-
     def preview_first(self):
         if not self.rows:
             messagebox.showwarning("CSV","Khtar CSV lwl.");return
@@ -307,7 +300,7 @@ class SocialPublisher:
             key=self.gemini_key.get().strip() if self.use_ai.get() else ""
             item=make_item(self.rows[0],1,key,{k:v.get() for k,v in self.columns.items()})
             self.preview.delete("1.0","end")
-            self.preview.insert("end",f"TITLE\n{item['title']}\n\nDESCRIPTION\n{item['description']}\n\nHASHTAGS\n{item['hashtags']}\n\nIMAGE\n{item['image']}\n\nVIDEO\n{item['video'] or '(none)'}\n\nLINK\n{item['link']}")
+            self.preview.insert("end",f"TITLE\n{item['title']}\n\nDESCRIPTION\n{item['description']}\n\nHASHTAGS\n{item['hashtags']}\n\nIMAGE\n{item['image']}\n\nVIDEO\n{item['video'] or '(none)'}\n\nLINK\n{item['link']}\n\nCOMMENT\n{item['comment'] or '(none)' }")
         except Exception as e: messagebox.showerror("Preview error",str(e))
 
     def load_pages(self):
