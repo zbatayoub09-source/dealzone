@@ -341,6 +341,14 @@ class SocialPublisher:
         self.youtube_description_widget.pack(fill="x")
         ttk.Label(main,text="Affiliate Link (Promotion Url)").pack(anchor="w",pady=(5,2))
         ttk.Entry(main,textvariable=self.youtube_link_var).pack(fill="x")
+        ttk.Label(main,text="CSV column dyal YouTube comment (ikhtiyari)").pack(anchor="w",pady=(5,2))
+        self.youtube_comment_column_var=tk.StringVar(value="")
+        self.youtube_comment_combo=ttk.Combobox(main,textvariable=self.youtube_comment_column_var,state="readonly")
+        self.youtube_comment_combo.pack(fill="x")
+        self.youtube_comment_combo.bind("<<ComboboxSelected>>",self.select_youtube_comment_column)
+        ttk.Label(main,text="Commentaire li ghadi ythatt ta7t video").pack(anchor="w",pady=(5,2))
+        self.youtube_comment_widget=tk.Text(main,height=3,wrap="word")
+        self.youtube_comment_widget.pack(fill="x")
         ttk.Label(main,text="Video URL (direct video file)").pack(anchor="w",pady=(5,2))
         ttk.Entry(main,textvariable=self.youtube_video_var).pack(fill="x")
         ttk.Button(main,text="Publish this YouTube product",command=self.publish_youtube_edited).pack(anchor="w",pady=(8,3))
@@ -399,9 +407,11 @@ class SocialPublisher:
             self.rows,self.headers=load_csv(p); self.csv_var.set(p); self.status.set(f"CSV wajed: {len(self.rows)} products."); self.preview_first()
             if hasattr(self,"youtube_product_combo"):
                 self.youtube_product_combo["values"]=[f"{i+1}. {make_item(row,i+1,'')['title'][:100]}" for i,row in enumerate(self.rows)]
+                self.youtube_comment_combo["values"]=self.headers
                 if self.rows:
                     self.youtube_product_combo.current(0)
                     self.select_youtube_product()
+                    self.select_youtube_comment_column()
         except Exception as e: messagebox.showerror("CSV error",str(e))
 
     def select_youtube_product(self, event=None):
@@ -418,6 +428,20 @@ class SocialPublisher:
         self.youtube_description_widget.delete("1.0","end")
         self.youtube_description_widget.insert("1.0",item["description"])
 
+    def select_youtube_comment_column(self, event=None):
+        if not self.rows or not hasattr(self,"youtube_comment_widget"):return
+        column=self.youtube_comment_column_var.get().strip()
+        idx=self.youtube_product_combo.current()
+        if not column or idx < 0 or idx >= len(self.rows):return
+        row=self.rows[idx]
+        value=""
+        for key in row:
+            if key is not None and str(key).strip()==column:
+                value=clean(row.get(key))
+                break
+        self.youtube_comment_widget.delete("1.0","end")
+        self.youtube_comment_widget.insert("1.0",value)
+
     def publish_youtube_edited(self):
         if not self.rows:
             messagebox.showwarning("CSV","Khtar CSV lwl.");return
@@ -431,10 +455,31 @@ class SocialPublisher:
         item["description"]=self.youtube_description_widget.get("1.0","end").strip()
         item["link"]=self.youtube_link_var.get().strip()
         item["video"]=self.youtube_video_var.get().strip()
+        comment=self.youtube_comment_widget.get("1.0","end").strip()
         if not item["video"]:
             messagebox.showwarning("Video URL","Had product ma fihch Video URL. Dkhel lien direct dial video.");return
         try:
             video_id=publish_youtube(item,self.youtube_token_path.get().strip())
+            comment_status="No comment requested."
+            if comment:
+                from google.oauth2.credentials import Credentials
+                from google.auth.transport.requests import Request
+                from googleapiclient.discovery import build
+                token_value=self.youtube_token_path.get().strip()
+                token_file=Path(token_value).expanduser()
+                if token_file.is_file():
+                    creds=Credentials.from_authorized_user_file(str(token_file))
+                    if not creds.valid and creds.expired and creds.refresh_token:
+                        creds.refresh(Request())
+                        token_file.write_text(creds.to_json(),encoding="utf-8")
+                else:
+                    creds=Credentials(token=token_value,scopes=["https://www.googleapis.com/auth/youtube.force-ssl"])
+                comment_scopes={"https://www.googleapis.com/auth/youtube.force-ssl","https://www.googleapis.com/auth/youtube"}
+                if creds.scopes and not comment_scopes.intersection(set(creds.scopes)):
+                    raise RuntimeError("Video tpublacha, walakin commentaire ma tpostach: token khaso youtube.force-ssl ola youtube scope. 3awed OAuth consent b had scope.")
+                yt=build("youtube","v3",credentials=creds,cache_discovery=False)
+                yt.commentThreads().insert(part="snippet",body={"snippet":{"videoId":video_id,"topLevelComment":{"snippet":{"textOriginal":comment}}}}).execute()
+                comment_status="Comment posted."
             out=Path(self.output_dir.get()).expanduser()
             state_path=out/"social_checkpoint.json"
             state=load_json(state_path)
@@ -444,7 +489,7 @@ class SocialPublisher:
             done[item["key"]]=video_id
             save_json(state_path,state)
             self.status.set("YouTube published: " + video_id)
-            messagebox.showinfo("YouTube",f"Video tpublacha b najah.\nVideo ID: {video_id}\nTitle: {item['title']}")
+            messagebox.showinfo("YouTube",f"Video tpublacha.\nVideo ID: {video_id}\nTitle: {item['title']}\n{comment_status}")
         except Exception as e:
             messagebox.showerror("YouTube publish error",str(e))
 
