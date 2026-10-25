@@ -67,13 +67,19 @@ def publish_youtube(item, token_path):
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
-    token_file = Path(token_path).expanduser()
-    if not token_file.is_file():
-        raise RuntimeError("YouTube token JSON ma l9itouch.")
-    try:
-        creds = Credentials.from_authorized_user_file(str(token_file))
-    except Exception as e:
-        raise RuntimeError(f"YouTube token JSON ma tqrachch: {e}")
+    token_value = (token_path or "").strip()
+    token_file = Path(token_value).expanduser()
+    token_file_exists = token_file.is_file()
+    if token_file_exists:
+        try:
+            creds = Credentials.from_authorized_user_file(str(token_file))
+        except Exception as e:
+            raise RuntimeError(f"YouTube token JSON ma tqrachch: {e}")
+    elif token_value.startswith("ya29."):
+        # Pasted Google OAuth access tokens work only until they expire.
+        creds = Credentials(token=token_value, scopes=["https://www.googleapis.com/auth/youtube.upload"])
+    else:
+        raise RuntimeError("Dkhel Google OAuth access token (ghaliban kaybda ya29.) ola khtar youtube_token.json.")
     upload_scopes = {"https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube"}
     if creds.scopes and not upload_scopes.intersection(set(creds.scopes)):
         raise RuntimeError("Token ma fihch YouTube upload permission. Khass OAuth token b youtube.upload ola youtube scope.")
@@ -81,7 +87,8 @@ def publish_youtube(item, token_path):
         if creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
-                token_file.write_text(creds.to_json(), encoding="utf-8")
+                if token_file_exists:
+                    token_file.write_text(creds.to_json(), encoding="utf-8")
             except Exception as e:
                 raise RuntimeError(f"YouTube token expired w refresh failed: {e}")
         else:
@@ -262,6 +269,7 @@ class SocialPublisher:
         self.threads_user_id=tk.StringVar(); self.threads_token=tk.StringVar()
         default_youtube_token = APP_DIR / "youtube_token.json"
         self.youtube_token_path=tk.StringVar(value=str(default_youtube_token) if default_youtube_token.exists() else "")
+        self.links_page_url=tk.StringVar(value="")
         self.use_ai=tk.BooleanVar(value=False); self.gemini_key=tk.StringVar()
         self.build()
 
@@ -311,11 +319,15 @@ class SocialPublisher:
         ttk.Label(main,text="Threads Access Token:").pack(anchor="w",pady=(6,2))
         ttk.Entry(main,textvariable=self.threads_token,show="*").pack(fill="x")
 
-        ttk.Label(main,text="YouTube OAuth token JSON (youtube_token.json)").pack(anchor="w",pady=(12,3))
+        ttk.Label(main,text="YouTube OAuth token (paste access token ola khtar token JSON file)").pack(anchor="w",pady=(12,3))
         yr=ttk.Frame(main); yr.pack(fill="x")
-        ttk.Entry(yr,textvariable=self.youtube_token_path,state="readonly").pack(side="left",fill="x",expand=True)
-        ttk.Button(yr,text="Upload / Choose token file",command=self.choose_youtube_token).pack(side="left",padx=(8,0))
-        ttk.Label(main,text="Token kayb9a f PC dyalek; ma kaytla3ch l-GitHub. Khass token fih YouTube upload permission.",wraplength=900).pack(anchor="w",pady=(3,2))
+        ttk.Entry(yr,textvariable=self.youtube_token_path,show="*").pack(side="left",fill="x",expand=True)
+        ttk.Button(yr,text="Choose token JSON",command=self.choose_youtube_token).pack(side="left",padx=(8,0))
+        ttk.Label(main,text="T9der tlssa9 Google OAuth access token (ghaliban kaybda ya29.) ola tkhtar youtube_token.json. Token kayb9a ghir f PC dyalek. Access token li tlssa9 kay9der ysali; token JSON li fih refresh_token afdal.",wraplength=900).pack(anchor="w",pady=(3,2))
+
+        ttk.Label(main,text="Instagram bio link page URL (optional)").pack(anchor="w",pady=(10,3))
+        ttk.Entry(main,textvariable=self.links_page_url).pack(fill="x")
+        ttk.Label(main,text="Instagram links f caption ma kaykounouch clickable. Dkhel URL public dyal page dyal products; l-app ghadi ygeneri HTML page b links dyal CSV f output.",wraplength=900).pack(anchor="w",pady=(3,2))
 
         ttk.Label(main,text="Gemini AI (ikhtiyari)").pack(anchor="w",pady=(12,3))
         ttk.Checkbutton(main,text="Generate SEO title + description + hashtags",variable=self.use_ai).pack(anchor="w")
@@ -421,13 +433,25 @@ class SocialPublisher:
         if "Threads" in platforms and (not self.threads_user_id.get().strip() or not self.threads_token.get().strip()):
             messagebox.showwarning("Threads","Dkhel Threads User ID w Access Token.");return
         if "YouTube" in platforms and not self.youtube_token_path.get().strip():
-            messagebox.showwarning("YouTube token","Klik Upload / Choose token file w khtar youtube_token.json.");return
+            messagebox.showwarning("YouTube token","Paste Google OAuth access token ola khtar youtube_token.json.");return
         try:limit=max(1,int(self.limit.get()))
         except ValueError:
             messagebox.showerror("Limit","Dkhel ra9m sahih.");return
         key=self.gemini_key.get().strip() if self.use_ai.get() else ""
         out=Path(self.output_dir.get()).expanduser();out.mkdir(parents=True,exist_ok=True)
         prepared=[(row,make_item(row,i,key)) for i,row in enumerate(self.rows[:limit],1)]
+        # Generate a link-in-bio landing page for all CSV products, not just this run's limit.
+        html_cards=[]
+        for i,row in enumerate(self.rows,1):
+            it=make_item(row,i,"")
+            if not it.get("link"):
+                continue
+            image_html = ""
+            if it.get("image","").startswith(("https://","http://")):
+                image_html = '<img src="' + html.escape(it["image"], quote=True) + '" alt="' + html.escape(it["title"], quote=True) + '">'
+            html_cards.append('<article class="product">' + image_html + '<h2>' + html.escape(it["title"]) + '</h2><p>' + html.escape(it["description"]) + '</p><a rel="sponsored nofollow" href="' + html.escape(it["link"], quote=True) + '" target="_blank">View deal</a></article>')
+        landing = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DealZone — Product Deals</title><style>body{font-family:Arial,sans-serif;max-width:1000px;margin:auto;padding:20px;background:#f6f7fb;color:#202124}header{text-align:center;padding:20px}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.product{background:white;border-radius:14px;padding:14px;box-shadow:0 2px 12px #0001}.product img{width:100%;height:190px;object-fit:contain}.product a{display:inline-block;background:#fe4f4f;color:white;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:bold}.product h2{font-size:17px}.product p{line-height:1.5}footer{font-size:12px;color:#666;margin:25px 0}</style></head><body><header><h1>DealZone</h1><p>Product finds and current deals</p></header><main>""" + "".join(html_cards) + """</main><footer>Some links may be affiliate links. Price and availability can change; check the retailer listing.</footer></body></html>"""
+        (out/"dealzone-links.html").write_text(landing,encoding="utf-8")
         state_path=out/"social_checkpoint.json";state=load_json(state_path)
         fb_done=state.setdefault("facebook",{});ig_done=state.setdefault("instagram",{});th_done=state.setdefault("threads",{});yt_done=state.setdefault("youtube",{})
         counts={p:0 for p in PLATFORMS};errors=[]
@@ -456,7 +480,9 @@ class SocialPublisher:
                     if item["key"] in done:continue
                     if not item["image"].startswith("https://"):
                         errors.append(f"Instagram / {page.get('name')}: Image URL public HTTPS khas.");continue
-                    caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"[:2200]
+                    bio_url=self.links_page_url.get().strip()
+                    cta=(f"\n\n🛍️ Shop this and more: {bio_url}" if bio_url.startswith(("https://","http://")) else "\n\n🛍️ Shop this and more — link in bio.")
+                    caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}{cta}"[:2200]
                     try:
                         c=api_post(GRAPH_BASE,f"{iid}/media",{"image_url":item["image"],"caption":caption,"access_token":page.get("access_token","")},"Instagram API")
                         api_post(GRAPH_BASE,f"{iid}/media_publish",{"creation_id":c["id"],"access_token":page.get("access_token","")},"Instagram API")
