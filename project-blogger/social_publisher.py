@@ -454,11 +454,12 @@ class SocialPublisher:
                     except Exception as e:errors.append(f"Instagram / {page.get('name')}: {e}")
 
         if "Threads" in platforms:
-            uid=self.threads_user_id.get().strip();token=self.threads_token.get().strip();done=th_done.setdefault(uid,{})
+            uid=self.threads_user_id.get().strip();token=self.threads_token.get().strip();done=th_done.setdefault(uid,{});thread_page_done=0
             for row,item in prepared:
                 if item["key"] in done:continue
                 try:
-                    done[item["key"]]=publish_threads(item,uid,token);counts["Threads"]+=1;save_json(state_path,state)
+                    done[item["key"]]=publish_threads(item,uid,token);counts["Threads"]+=1;thread_page_done+=1;save_json(state_path,state)
+                    if thread_page_done>=limit:break
                 except Exception as e:errors.append(f"Threads: {e}")
 
         # Platforms without direct publishing support produce ready CSV files.
