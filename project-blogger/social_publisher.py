@@ -381,7 +381,15 @@ class SocialPublisher:
             for page in selected:
                 pid=str(page["id"]);done=fb_done.setdefault(pid,{})
                 for row,item in prepared:
-                    if item["key"] in done:continue
+                    if item["key"] in done:
+                        previous=done[item["key"]]
+                        if isinstance(previous,dict) and item.get("comment") and not previous.get("comment_done") and previous.get("post_id"):
+                            try:
+                                api_post(GRAPH_BASE,f"{previous['post_id']}/comments",{"message":item["comment"],"access_token":page.get("access_token","")},"Facebook comment API")
+                                previous["comment_done"]=True;save_json(state_path,state)
+                            except Exception as e:
+                                errors.append(f"Facebook comment / {page.get('name')}: {e}")
+                        continue
                     caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
                     if item["link"]:caption+=f"\n\nShop link: {item['link']}"
                     try:
@@ -398,9 +406,12 @@ class SocialPublisher:
                             posted=api_post(GRAPH_BASE,f"{pid}/feed",{"message":caption,"access_token":page.get("access_token","")},"Facebook API")
                         post_id=posted.get("post_id") or posted.get("id")
                         if not post_id: raise RuntimeError("Facebook ma rje3ch post ID.")
+                        done[item["key"]]={"post_id":post_id,"comment_done":not bool(item.get("comment"))}
+                        save_json(state_path,state)
                         if item.get("comment"):
                             api_post(GRAPH_BASE,f"{post_id}/comments",{"message":item["comment"],"access_token":page.get("access_token","")},"Facebook comment API")
-                        done[item["key"]]=1;counts["Facebook"]+=1;save_json(state_path,state)
+                            done[item["key"]]["comment_done"]=True;save_json(state_path,state)
+                        counts["Facebook"]+=1
                     except Exception as e:errors.append(f"Facebook / {page.get('name')}: {e}")
 
         if "Instagram" in platforms:
