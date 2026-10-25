@@ -427,9 +427,11 @@ class SocialPublisher:
         self.youtube_video_var.set(item["video"])
         self.youtube_description_widget.delete("1.0","end")
         self.youtube_description_widget.insert("1.0",item["description"])
+        self.select_youtube_comment_column()
 
     def select_youtube_comment_column(self, event=None):
         if not self.rows or not hasattr(self,"youtube_comment_widget"):return
+        self.youtube_comment_widget.delete("1.0","end")
         column=self.youtube_comment_column_var.get().strip()
         idx=self.youtube_product_combo.current()
         if not column or idx < 0 or idx >= len(self.rows):return
