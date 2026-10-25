@@ -361,7 +361,7 @@ class SocialPublisher:
         key=self.gemini_key.get().strip() if self.use_ai.get() else ""
         out=Path(self.output_dir.get()).expanduser();out.mkdir(parents=True,exist_ok=True)
         columns={k:v.get() for k,v in self.columns.items()}
-        prepared=[(row,make_item(row,i,key,columns)) for i,row in enumerate(self.rows[:limit],1)]
+        prepared=[(row,make_item(row,i,key,columns)) for i,row in enumerate(self.rows,1)]
         # Generate a link-in-bio landing page for all CSV products, not just this run's limit.
         html_cards=[]
         for i,row in enumerate(self.rows,1):
@@ -420,6 +420,7 @@ class SocialPublisher:
                 ig=page.get("instagram_business_account") or {};iid=str(ig.get("id", ""));
                 if not iid:errors.append(f"Instagram / {page.get('name')}: Instagram Professional ma mrboutach b Page.");continue
                 done=ig_done.setdefault(iid,{})
+                ig_page_done=0
                 for row,item in prepared:
                     if item["key"] in done:continue
                     video=item.get("video","").strip();image=item.get("image","").strip();media=self.media_mode.get()
@@ -448,7 +449,8 @@ class SocialPublisher:
                             c=api_post(GRAPH_BASE,f"{iid}/media",{"image_url":image,"caption":caption,"access_token":page.get("access_token","")},"Instagram API")
                             container_id=c["id"]
                         api_post(GRAPH_BASE,f"{iid}/media_publish",{"creation_id":container_id,"access_token":page.get("access_token","")},"Instagram API")
-                        done[item["key"]]=1;counts["Instagram"]+=1;save_json(state_path,state)
+                        done[item["key"]]=1;counts["Instagram"]+=1;ig_page_done+=1;save_json(state_path,state)
+                        if ig_page_done>=limit:break
                     except Exception as e:errors.append(f"Instagram / {page.get('name')}: {e}")
 
         if "Threads" in platforms:
@@ -463,7 +465,7 @@ class SocialPublisher:
         for p in platforms:
             if p in ("Facebook","Instagram","Threads"):continue
             rows=[]
-            for row,item in prepared:
+            for row,item in prepared[:limit]:
                 rows.append({"Platform":p,"ProductId":item["pid"],"Title":item["title"],"Text":f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}","Description":item["description"],"Hashtags":item["hashtags"],"Image Url":item["image"],"Video Url":item["video"],"Promotion Url":item["link"],"Deduplication Key":item["key"]})
             write_csv(out/f"{p.lower()}_ready.csv",rows);counts[p]=len(rows)
 
