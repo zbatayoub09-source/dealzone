@@ -182,8 +182,8 @@ class App:
         cols={k:v.get() for k,v in self.cols.items()};pages=[self.pages[i] for i in selected];mode=self.media.get()
         done=skipped=0;errors=[]
         for page in pages:
-            pid=str(page["id"]);ps=fs.setdefault(pid,{})
-            for idx,row in enumerate(self.rows[:limit],1):
+            pid=str(page["id"]);ps=fs.setdefault(pid,{});page_done=0
+            for idx,row in enumerate(self.rows,1):
                 try:
                     it=make_item(row,idx,cols,self.tagmode.get(),self.gemini.get().strip());ck=it["key"]
                     if ck in ps:skipped+=1;continue
@@ -200,7 +200,8 @@ class App:
                     postid=result.get("id") or result.get("post_id")
                     if not postid:raise RuntimeError("Facebook ma rje3ch post ID; checkpoint ma tsajelch.")
                     ps[ck]={"post_id":postid,"row":idx,"time":time.strftime("%Y-%m-%d %H:%M:%S"),"media":media,"title":it["title"]}
-                    save_state(state);done+=1;self.root.after(0,lambda d=done,pn=page.get("name",pid):self.status.set(f"Published {d}; Page: {pn}"));time.sleep(.4)
+                    save_state(state);done+=1;page_done+=1;self.root.after(0,lambda d=done,pn=page.get("name",pid):self.status.set(f"Published {d}; Page: {pn}"));time.sleep(.4)
+                    if page_done>=limit:break
                 except Exception as e:errors.append(f"{page.get('name',pid)} / row {idx}: {str(e)[:220]}")
         summary=f"Finished. Published: {done}. Already checkpointed: {skipped}. Errors: {len(errors)}."
         if errors:summary+="\n\n"+"\n".join(errors[:12])
