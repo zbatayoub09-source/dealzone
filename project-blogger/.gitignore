@@ -4,3 +4,6 @@ published_state.json
 facebook_config.json
 __pycache__/
 *.pyc
+youtube_token.json
+youtube_checkpoint.json
+social_checkpoint.json
