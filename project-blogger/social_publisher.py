@@ -74,9 +74,9 @@ def publish_youtube(item, token_path):
         creds = Credentials.from_authorized_user_file(str(token_file))
     except Exception as e:
         raise RuntimeError(f"YouTube token JSON ma tqrachch: {e}")
-    required_scope = "https://www.googleapis.com/auth/youtube.upload"
-    if creds.scopes and required_scope not in creds.scopes:
-        raise RuntimeError("Token ma fihch youtube.upload. Khass OAuth token b YouTube upload permission.")
+    upload_scopes = {"https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube"}
+    if creds.scopes and not upload_scopes.intersection(set(creds.scopes)):
+        raise RuntimeError("Token ma fihch YouTube upload permission. Khass OAuth token b youtube.upload ola youtube scope.")
     if not creds.valid:
         if creds.expired and creds.refresh_token:
             try:
