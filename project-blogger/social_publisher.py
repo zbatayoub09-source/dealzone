@@ -8,6 +8,7 @@ import tempfile
 import urllib.request
 import urllib.error
 import urllib.parse
+import time
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -421,14 +422,32 @@ class SocialPublisher:
                 done=ig_done.setdefault(iid,{})
                 for row,item in prepared:
                     if item["key"] in done:continue
-                    if not item["image"].startswith("https://"):
-                        errors.append(f"Instagram / {page.get('name')}: Image URL public HTTPS khas.");continue
+                    video=item.get("video","").strip();image=item.get("image","").strip();media=self.media_mode.get()
+                    ig_mode=("video" if media=="Video only" else "image" if media=="Image only" else "text" if media=="Text only" else "video" if video.startswith("https://") else "image" if image.startswith("https://") else "text")
+                    if ig_mode=="text":
+                        errors.append(f"Instagram / {page.get('name')}: public HTTPS image ola video URL khas.");continue
                     bio_url=self.links_page_url.get().strip()
                     cta=(f"\n\n🛍️ Shop this and more: {bio_url}" if bio_url.startswith(("https://","http://")) else "\n\n🛍️ Shop this and more — link in bio.")
                     caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}{cta}"[:2200]
                     try:
-                        c=api_post(GRAPH_BASE,f"{iid}/media",{"image_url":item["image"],"caption":caption,"access_token":page.get("access_token","")},"Instagram API")
-                        api_post(GRAPH_BASE,f"{iid}/media_publish",{"creation_id":c["id"],"access_token":page.get("access_token","")},"Instagram API")
+                        if ig_mode=="video":
+                            c=api_post(GRAPH_BASE,f"{iid}/media",{"media_type":"REELS","video_url":video,"caption":caption,"share_to_feed":"true","access_token":page.get("access_token","")},"Instagram Reels API")
+                            container_id=c["id"]
+                            finished=False
+                            for _ in range(12):
+                                status=api_get(GRAPH_BASE,container_id,{"fields":"status_code","access_token":page.get("access_token","")},"Instagram Reels status")
+                                status_code=status.get("status_code","")
+                                if status_code=="FINISHED":
+                                    finished=True;break
+                                if status_code=="ERROR":
+                                    raise RuntimeError("Instagram rejected this video. Check video format, duration and public URL.")
+                                time.sleep(5)
+                            if not finished: raise RuntimeError("Instagram video processing timed out; try again later.")
+                        else:
+                            if not image.startswith("https://"): raise RuntimeError("Image URL public HTTPS khas.")
+                            c=api_post(GRAPH_BASE,f"{iid}/media",{"image_url":image,"caption":caption,"access_token":page.get("access_token","")},"Instagram API")
+                            container_id=c["id"]
+                        api_post(GRAPH_BASE,f"{iid}/media_publish",{"creation_id":container_id,"access_token":page.get("access_token","")},"Instagram API")
                         done[item["key"]]=1;counts["Instagram"]+=1;save_json(state_path,state)
                     except Exception as e:errors.append(f"Instagram / {page.get('name')}: {e}")
 
