@@ -61,88 +61,6 @@ def api_get(base, endpoint, params, label="API"):
     return data
 
 
-def publish_youtube(item, token_path):
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
-    from googleapiclient.discovery import build
-    from googleapiclient.http import MediaFileUpload
-
-    token_value = (token_path or "").strip()
-    token_file = Path(token_value).expanduser()
-    token_file_exists = token_file.is_file()
-    if token_file_exists:
-        try:
-            creds = Credentials.from_authorized_user_file(str(token_file))
-        except Exception as e:
-            raise RuntimeError(f"YouTube token JSON ma tqrachch: {e}")
-    elif token_value.startswith("ya29."):
-        # Pasted Google OAuth access tokens work only until they expire.
-        creds = Credentials(token=token_value, scopes=["https://www.googleapis.com/auth/youtube.upload"])
-    else:
-        raise RuntimeError("Dkhel Google OAuth access token (ghaliban kaybda ya29.) ola khtar youtube_token.json.")
-    upload_scopes = {"https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube"}
-    if creds.scopes and not upload_scopes.intersection(set(creds.scopes)):
-        raise RuntimeError("Token ma fihch YouTube upload permission. Khass OAuth token b youtube.upload ola youtube scope.")
-    if not creds.valid:
-        if creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-                if token_file_exists:
-                    token_file.write_text(creds.to_json(), encoding="utf-8")
-            except Exception as e:
-                raise RuntimeError(f"YouTube token expired w refresh failed: {e}")
-        else:
-            raise RuntimeError("YouTube token ma validch ola ma fihch refresh_token. Khass OAuth token jdida.")
-
-    video_url = (item.get("video") or "").strip()
-    if not video_url.startswith(("https://", "http://")):
-        raise RuntimeError("Product ma fihch Video URL direct. Upload YouTube khas video file, machi image.")
-    suffix = Path(urllib.parse.urlparse(video_url).path).suffix.lower()
-    if suffix not in (".mp4", ".mov", ".mpeg", ".mpg", ".avi", ".wmv", ".flv", ".webm", ".3gp", ".m4v"):
-        suffix = ".mp4"
-    tmp_path = None
-    try:
-        request = urllib.request.Request(video_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(request, timeout=90) as response:
-            content_type = response.headers.get("Content-Type", "")
-            if "text/html" in content_type.lower():
-                raise RuntimeError("Video URL kay7ell page HTML, machi direct video link.")
-            with tempfile.NamedTemporaryFile(prefix="dealzone_youtube_", suffix=suffix, delete=False) as tmp:
-                tmp_path = tmp.name
-                while True:
-                    chunk = response.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    tmp.write(chunk)
-        if os.path.getsize(tmp_path) < 1024:
-            raise RuntimeError("Video download khawi ola sghir بزاف.")
-        youtube = build("youtube", "v3", credentials=creds, cache_discovery=False)
-        description = (item.get("description", "") + "\n\n" + item.get("hashtags", "") +
-                       ("\n\nProduct link: " + item["link"] if item.get("link") else ""))
-        body = {
-            "snippet": {
-                "title": (item.get("title") or "DealZone video")[:100],
-                "description": description[:5000],
-                "tags": re.findall(r"[A-Za-z0-9_]+", item.get("hashtags", ""))[:30],
-                "categoryId": "22"
-            },
-            "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
-        }
-        media = MediaFileUpload(tmp_path, mimetype=content_type if content_type.startswith("video/") else "video/mp4",
-                                chunksize=8 * 1024 * 1024, resumable=True)
-        upload = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
-        result = None
-        while result is None:
-            status, result = upload.next_chunk()
-        return result.get("id", "OK")
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
-
-
 def publish_threads(item, user_id, token):
     caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"[:500]
     image = item.get("image", "").strip()
@@ -274,8 +192,6 @@ class SocialPublisher:
         self.output_dir=tk.StringVar(value=str(APP_DIR/"output"))
         self.facebook_token=tk.StringVar(); self.facebook_page_id=tk.StringVar()
         self.threads_user_id=tk.StringVar(); self.threads_token=tk.StringVar()
-        default_youtube_token = APP_DIR / "youtube_token.json"
-        self.youtube_token_path=tk.StringVar(value=str(default_youtube_token) if default_youtube_token.exists() else "")
         self.links_page_url=tk.StringVar(value="")
         self.use_ai=tk.BooleanVar(value=False); self.gemini_key=tk.StringVar()
         self.build()
@@ -376,18 +292,6 @@ class SocialPublisher:
     def choose_output(self):
         p=filedialog.askdirectory(title="Choose output folder")
         if p:self.output_dir.set(p)
-
-    def choose_youtube_token(self):
-        p=filedialog.askopenfilename(title="Choose YouTube OAuth token JSON",filetypes=[("JSON files","*.json"),("All files","*.*")])
-        if not p:return
-        try:
-            data=json.loads(Path(p).read_text(encoding="utf-8"))
-            if not isinstance(data,dict) or not (data.get("refresh_token") or data.get("token")):
-                raise ValueError("Had JSON ma kaybanch OAuth token. Khtar youtube_token.json, machi client_secret.json.")
-            self.youtube_token_path.set(p)
-            self.status.set("YouTube token file selected.")
-        except Exception as e:
-            messagebox.showerror("YouTube token file",str(e))
 
     def choose_csv(self):
         p=filedialog.askopenfilename(title="Choose AliExpress CSV",filetypes=[("CSV files","*.csv"),("All files","*.*")])
@@ -565,7 +469,7 @@ class SocialPublisher:
         landing = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DealZone — Product Deals</title><style>body{font-family:Arial,sans-serif;max-width:1000px;margin:auto;padding:20px;background:#f6f7fb;color:#202124}header{text-align:center;padding:20px}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.product{background:white;border-radius:14px;padding:14px;box-shadow:0 2px 12px #0001}.product img{width:100%;height:190px;object-fit:contain}.product a{display:inline-block;background:#fe4f4f;color:white;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:bold}.product h2{font-size:17px}.product p{line-height:1.5}footer{font-size:12px;color:#666;margin:25px 0}</style></head><body><header><h1>DealZone</h1><p>Product finds and current deals</p></header><main>""" + "".join(html_cards) + """</main><footer>Some links may be affiliate links. Price and availability can change; check the retailer listing.</footer></body></html>"""
         (out/"dealzone-links.html").write_text(landing,encoding="utf-8")
         state_path=out/"social_checkpoint.json";state=load_json(state_path)
-        fb_done=state.setdefault("facebook",{});ig_done=state.setdefault("instagram",{});th_done=state.setdefault("threads",{});yt_done=state.setdefault("youtube",{})
+        fb_done=state.setdefault("facebook",{});ig_done=state.setdefault("instagram",{});th_done=state.setdefault("threads",{})
         counts={p:0 for p in PLATFORMS};errors=[]
 
         if "Facebook" in platforms:
@@ -576,20 +480,21 @@ class SocialPublisher:
                     caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
                     if item["link"]:caption+=f"\n\nShop link: {item['link']}"
                     try:
-                        if item["image"].startswith(("https://","http://")):
-                            media=self.media_mode.get()
-                            video=item.get("video","").strip(); image=item.get("image","").strip()
-                            mode=("video" if media=="Video only" else "image" if media=="Image only" else "text" if media=="Text only" else "video" if video.startswith(("https://","http://")) else "image" if image.startswith(("https://","http://")) else "text")
-                            if mode=="video":
-                                posted=api_post(GRAPH_BASE,f"{pid}/videos",{"file_url":video,"description":caption,"access_token":page.get("access_token","")},"Facebook video API")
-                            elif mode=="image":
-                                posted=api_post(GRAPH_BASE,f"{pid}/photos",{"url":image,"caption":caption,"access_token":page.get("access_token","")},"Facebook API")
-                            else:
-                                posted=api_post(GRAPH_BASE,f"{pid}/feed",{"message":caption,"access_token":page.get("access_token","")},"Facebook API")
-                            post_id=posted.get("post_id") or posted.get("id")
-                            if not post_id: raise RuntimeError("Facebook ma rje3ch post ID.")
-                            if item.get("comment"):
-                                api_post(GRAPH_BASE,f"{post_id}/comments",{"message":item["comment"],"access_token":page.get("access_token","")},"Facebook comment API")
+                        media=self.media_mode.get()
+                        video=item.get("video","").strip(); image=item.get("image","").strip()
+                        mode=("video" if media=="Video only" else "image" if media=="Image only" else "text" if media=="Text only" else "video" if video.startswith(("https://","http://")) else "image" if image.startswith(("https://","http://")) else "text")
+                        if mode=="video":
+                            if not video.startswith(("https://","http://")): raise RuntimeError("Had row ma fihch Video URL.")
+                            posted=api_post(GRAPH_BASE,f"{pid}/videos",{"file_url":video,"description":caption,"access_token":page.get("access_token","")},"Facebook video API")
+                        elif mode=="image":
+                            if not image.startswith(("https://","http://")): raise RuntimeError("Had row ma fihch Image URL.")
+                            posted=api_post(GRAPH_BASE,f"{pid}/photos",{"url":image,"caption":caption,"access_token":page.get("access_token","")},"Facebook API")
+                        else:
+                            posted=api_post(GRAPH_BASE,f"{pid}/feed",{"message":caption,"access_token":page.get("access_token","")},"Facebook API")
+                        post_id=posted.get("post_id") or posted.get("id")
+                        if not post_id: raise RuntimeError("Facebook ma rje3ch post ID.")
+                        if item.get("comment"):
+                            api_post(GRAPH_BASE,f"{post_id}/comments",{"message":item["comment"],"access_token":page.get("access_token","")},"Facebook comment API")
                         done[item["key"]]=1;counts["Facebook"]+=1;save_json(state_path,state)
                     except Exception as e:errors.append(f"Facebook / {page.get('name')}: {e}")
 
