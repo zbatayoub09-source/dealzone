@@ -1,6 +1,6 @@
-# Social Publisher — Test Prototype
+# DealZone Social Publisher — Test Prototype
 
-This folder is an isolated prototype on branch `test/social-publisher-windows`. It does not modify the existing `main` branch or the current Blogger app.
+This is an isolated prototype on branch `test/social-publisher-windows`. It does not modify the `main` branch or the existing Blogger app.
 
 ## Run on Windows
 
@@ -12,16 +12,15 @@ This folder is an isolated prototype on branch `test/social-publisher-windows`. 
 py -3 social_publisher.py
 ```
 
-## What this prototype does
+## Current prototype features
 
-- Loads and counts rows from a CSV file.
-- Lets the user select target platforms.
-- Sets a queue interval from 2 minutes upward.
-- Provides pause/resume and reset controls.
-- Saves the selected CSV path and progress to `publisher_state.json`.
+- Loads a CSV and shows the number of rows and columns.
+- Lets the user choose which CSV columns are combined into the post text/caption/comment.
+- Auto-detects common image and video URL column names; allows Auto, Image, Video, or No media preview.
+- Lets the user select Facebook, Instagram, Blogger, TikTok, Pinterest, and Threads. YouTube is intentionally excluded from this test UI.
+- Supports a queue interval from 2 minutes upward, pause/resume, and saved progress.
+- Keeps CSV selection, selected text columns, media mode, and progress in local `publisher_state.json`.
 
-## Important limitations
+## Important limitation
 
-This is only a UI/queue preview. It does **not** publish content to Facebook, Instagram, Blogger, YouTube, TikTok, Pinterest, or Threads yet. Each platform needs its own supported OAuth/API integration and permission checks. Do not enter real tokens in this prototype. OAuth credentials and tokens must not be committed to GitHub.
-
-The interval is a scheduling preference, not a guarantee that every platform will permit publishing at that rate.
+This remains a **preview-only prototype**. It does not publish to any platform yet. Real cross-posting requires implementing and testing each platform's official API/OAuth flow, media upload requirements, account/page selection, and permissions. Selecting several platforms here only affects the preview; it does not post to them. Do not enter or commit real tokens in this prototype. The interval is a scheduling preference, not a guarantee that every platform will permit publishing at that rate.
