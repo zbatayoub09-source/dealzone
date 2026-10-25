@@ -252,9 +252,10 @@ class SocialPublisher:
         ttk.Label(main,text="Threads Access Token:").pack(anchor="w",pady=(6,2))
         ttk.Entry(main,textvariable=self.threads_token,show="*").pack(fill="x")
 
-        ttk.Label(main,text="Instagram bio link page URL (optional)").pack(anchor="w",pady=(10,3))
+        ttk.Label(main,text="Instagram bio link page URL (GitHub Pages)").pack(anchor="w",pady=(10,3))
+        self.links_page_url.set("https://zbatayoub09-source.github.io/dealzone/links/")
         ttk.Entry(main,textvariable=self.links_page_url).pack(fill="x")
-        ttk.Label(main,text="Instagram links f caption ma kaykounouch clickable. Dkhel URL public dyal page dyal products; l-app ghadi ygeneri HTML page b links dyal CSV f output.",wraplength=900).pack(anchor="w",pady=(3,2))
+        ttk.Label(main,text="L-app kaygeneri output/dealzone-links.html. Bach ywli public, khas tرفع هاد الملف ل GitHub Pages باسم links/index.html. Instagram caption links ma kaykounouch clickable; dir page URL f bio.",wraplength=900).pack(anchor="w",pady=(3,2))
 
         ttk.Label(main,text="Gemini AI (ikhtiyari)").pack(anchor="w",pady=(12,3))
         ttk.Checkbutton(main,text="Generate SEO title + description + hashtags",variable=self.use_ai).pack(anchor="w")
@@ -384,12 +385,18 @@ class SocialPublisher:
                 for row,item in prepared:
                     if item["key"] in done:
                         previous=done[item["key"]]
-                        if isinstance(previous,dict) and item.get("comment") and not previous.get("comment_done") and previous.get("post_id"):
-                            try:
-                                api_post(GRAPH_BASE,f"{previous['post_id']}/comments",{"message":item["comment"],"access_token":page.get("access_token","")},"Facebook comment API")
-                                previous["comment_done"]=True;save_json(state_path,state)
-                            except Exception as e:
-                                errors.append(f"Facebook comment / {page.get('name')}: {e}")
+                        # If a comment was added/edited in the CSV after the post was published,
+                        # compare its hash rather than trusting an old comment_done=True flag.
+                        if isinstance(previous,dict) and item.get("comment") and previous.get("post_id"):
+                            comment_hash=hashlib.sha256(item["comment"].strip().encode("utf-8")).hexdigest()
+                            if previous.get("comment_hash") != comment_hash:
+                                try:
+                                    api_post(GRAPH_BASE,f"{previous['post_id']}/comments",{"message":item["comment"],"access_token":page.get("access_token","")},"Facebook comment API")
+                                    previous["comment_done"]=True
+                                    previous["comment_hash"]=comment_hash
+                                    save_json(state_path,state)
+                                except Exception as e:
+                                    errors.append(f"Facebook comment / {page.get('name')}: {e}")
                         continue
                     caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
                     if item["link"]:caption+=f"\n\nShop link: {item['link']}"
@@ -407,11 +414,13 @@ class SocialPublisher:
                             posted=api_post(GRAPH_BASE,f"{pid}/feed",{"message":caption,"access_token":page.get("access_token","")},"Facebook API")
                         post_id=posted.get("post_id") or posted.get("id")
                         if not post_id: raise RuntimeError("Facebook ma rje3ch post ID.")
-                        done[item["key"]]={"post_id":post_id,"comment_done":not bool(item.get("comment"))}
+                        done[item["key"]]={"post_id":post_id,"comment_done":False,"comment_hash":""}
                         save_json(state_path,state)
                         if item.get("comment"):
                             api_post(GRAPH_BASE,f"{post_id}/comments",{"message":item["comment"],"access_token":page.get("access_token","")},"Facebook comment API")
-                            done[item["key"]]["comment_done"]=True;save_json(state_path,state)
+                            done[item["key"]]["comment_done"]=True
+                            done[item["key"]]["comment_hash"]=hashlib.sha256(item["comment"].strip().encode("utf-8")).hexdigest()
+                            save_json(state_path,state)
                         counts["Facebook"]+=1
                     except Exception as e:errors.append(f"Facebook / {page.get('name')}: {e}")
 
