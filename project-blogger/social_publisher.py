@@ -325,6 +325,27 @@ class SocialPublisher:
         ttk.Button(yr,text="Choose token JSON",command=self.choose_youtube_token).pack(side="left",padx=(8,0))
         ttk.Label(main,text="T9der tlssa9 Google OAuth access token (ghaliban kaybda ya29.) ola tkhtar youtube_token.json. Token kayb9a ghir f PC dyalek. Access token li tlssa9 kay9der ysali; token JSON li fih refresh_token afdal.",wraplength=900).pack(anchor="w",pady=(3,2))
 
+        ttk.Label(main,text="YouTube: khtar product w raje3 Title / Description / Affiliate Link",font=("Segoe UI",11,"bold")).pack(anchor="w",pady=(10,4))
+        self.youtube_product_var=tk.StringVar(value="")
+        self.youtube_title_var=tk.StringVar()
+        self.youtube_link_var=tk.StringVar()
+        self.youtube_description_widget=None
+        self.youtube_video_var=tk.StringVar()
+        self.youtube_product_combo=ttk.Combobox(main,textvariable=self.youtube_product_var,state="readonly")
+        self.youtube_product_combo.pack(fill="x",pady=3)
+        self.youtube_product_combo.bind("<<ComboboxSelected>>",self.select_youtube_product)
+        ttk.Label(main,text="YouTube Title").pack(anchor="w",pady=(5,2))
+        ttk.Entry(main,textvariable=self.youtube_title_var).pack(fill="x")
+        ttk.Label(main,text="YouTube Description").pack(anchor="w",pady=(5,2))
+        self.youtube_description_widget=tk.Text(main,height=5,wrap="word")
+        self.youtube_description_widget.pack(fill="x")
+        ttk.Label(main,text="Affiliate Link (Promotion Url)").pack(anchor="w",pady=(5,2))
+        ttk.Entry(main,textvariable=self.youtube_link_var).pack(fill="x")
+        ttk.Label(main,text="Video URL (direct video file)").pack(anchor="w",pady=(5,2))
+        ttk.Entry(main,textvariable=self.youtube_video_var).pack(fill="x")
+        ttk.Button(main,text="Publish this YouTube product",command=self.publish_youtube_edited).pack(anchor="w",pady=(8,3))
+        ttk.Label(main,text="Had lزر kaynشر ghir product li khtarti, b Title/Description/Link li 3deltihom. Video URL khas ykoun direct.",wraplength=900).pack(anchor="w",pady=(2,4))
+
         ttk.Label(main,text="Instagram bio link page URL (optional)").pack(anchor="w",pady=(10,3))
         ttk.Entry(main,textvariable=self.links_page_url).pack(fill="x")
         ttk.Label(main,text="Instagram links f caption ma kaykounouch clickable. Dkhel URL public dyal page dyal products; l-app ghadi ygeneri HTML page b links dyal CSV f output.",wraplength=900).pack(anchor="w",pady=(3,2))
@@ -370,6 +391,62 @@ class SocialPublisher:
             self.status.set("YouTube token file selected.")
         except Exception as e:
             messagebox.showerror("YouTube token file",str(e))
+
+    def choose_csv(self):
+        p=filedialog.askopenfilename(title="Choose AliExpress CSV",filetypes=[("CSV files","*.csv"),("All files","*.*")])
+        if not p:return
+        try:
+            self.rows,self.headers=load_csv(p); self.csv_var.set(p); self.status.set(f"CSV wajed: {len(self.rows)} products."); self.preview_first()
+            if hasattr(self,"youtube_product_combo"):
+                self.youtube_product_combo["values"]=[f"{i+1}. {make_item(row,i+1,'')['title'][:100]}" for i,row in enumerate(self.rows)]
+                if self.rows:
+                    self.youtube_product_combo.current(0)
+                    self.select_youtube_product()
+        except Exception as e: messagebox.showerror("CSV error",str(e))
+
+    def select_youtube_product(self, event=None):
+        if not self.rows:return
+        idx=self.youtube_product_combo.current()
+        if idx < 0:
+            try: idx=int(self.youtube_product_var.get().split(".",1)[0])-1
+            except Exception: idx=0
+        if not 0 <= idx < len(self.rows):return
+        item=make_item(self.rows[idx],idx+1,"")
+        self.youtube_title_var.set(item["title"])
+        self.youtube_link_var.set(item["link"])
+        self.youtube_video_var.set(item["video"])
+        self.youtube_description_widget.delete("1.0","end")
+        self.youtube_description_widget.insert("1.0",item["description"])
+
+    def publish_youtube_edited(self):
+        if not self.rows:
+            messagebox.showwarning("CSV","Khtar CSV lwl.");return
+        if not self.youtube_token_path.get().strip():
+            messagebox.showwarning("YouTube token","Khtar youtube_token.json lwl.");return
+        idx=self.youtube_product_combo.current()
+        if idx < 0 or idx >= len(self.rows):
+            messagebox.showwarning("YouTube product","Khtar product mn list.");return
+        item=make_item(self.rows[idx],idx+1,"")
+        item["title"]=self.youtube_title_var.get().strip() or item["title"]
+        item["description"]=self.youtube_description_widget.get("1.0","end").strip()
+        item["link"]=self.youtube_link_var.get().strip()
+        item["video"]=self.youtube_video_var.get().strip()
+        if not item["video"]:
+            messagebox.showwarning("Video URL","Had product ma fihch Video URL. Dkhel lien direct dial video.");return
+        try:
+            video_id=publish_youtube(item,self.youtube_token_path.get().strip())
+            out=Path(self.output_dir.get()).expanduser()
+            state_path=out/"social_checkpoint.json"
+            state=load_json(state_path)
+            done=state.setdefault("youtube",{})
+            token_key=str(Path(self.youtube_token_path.get().strip()).expanduser().resolve())
+            done=done.setdefault(token_key,{})
+            done[item["key"]]=video_id
+            save_json(state_path,state)
+            self.status.set("YouTube published: " + video_id)
+            messagebox.showinfo("YouTube",f"Video tpublacha b najah.\nVideo ID: {video_id}\nTitle: {item['title']}")
+        except Exception as e:
+            messagebox.showerror("YouTube publish error",str(e))
 
     def preview_first(self):
         if not self.rows:
