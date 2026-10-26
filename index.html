@@ -38,6 +38,46 @@
 .slider-price{margin-top:7px;font-size:18px;font-weight:900;color:#e22}.slider-old{font-size:11px;color:#999;text-decoration:line-through;margin-left:5px;font-weight:400}
 .slider-stats{font-size:11px;color:#667085;margin-top:6px;min-height:16px}.slider-btn{display:block;background:#f22;color:#fff;text-align:center;padding:9px;border-radius:8px;margin-top:9px;font-size:12px;font-weight:800}
 @media(max-width:900px){.slider-card{flex-basis:calc((100% - 28px)/3)}}@media(max-width:650px){.slider-card{flex-basis:calc((100% - 14px)/2)}.slider-card img{height:150px}}@media(max-width:430px){.slider-card{flex-basis:78%}.slider-card img{height:175px}}
+</style><style>
+:root{--dz-accent:#ff4f4f;--dz-ink:#171923;--dz-muted:#667085;--dz-line:#e8eaf0;--dz-bg:#f7f8fa}
+body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif!important;background:var(--dz-bg)!important;color:var(--dz-ink)!important}
+.top{background:#111827!important;padding:10px 5%!important;letter-spacing:.2px}
+.head{gap:24px!important;padding:15px 5%!important;border-bottom:1px solid var(--dz-line);box-shadow:0 4px 18px #1018280a!important}
+.logo{width:170px!important;flex-shrink:0}
+.search input{border:1px solid #d7dce5!important;border-right:0!important;border-radius:12px 0 0 12px!important;padding:14px 16px!important}
+.search button{background:var(--dz-accent)!important;border-radius:0 12px 12px 0!important;font-weight:800}
+.nav{gap:10px!important;padding-top:10px!important;padding-bottom:13px!important;border-bottom:1px solid var(--dz-line)}
+.nav a{padding:9px 12px;border-radius:9px;white-space:nowrap}.nav a:hover{background:#fff0f0;color:var(--dz-accent)}
+.hero{margin:24px 5%!important;padding:clamp(28px,5vw,64px)!important;border-radius:24px!important;background:radial-gradient(circle at 85% 10%,#ff4f4f66,transparent 30%),linear-gradient(125deg,#151923,#292f3e)!important;box-shadow:0 18px 45px #10182824}
+.hero h1{font-size:clamp(30px,4vw,48px)!important;line-height:1.08;max-width:720px;letter-spacing:-1.2px}
+.hero p{max-width:640px;line-height:1.7;color:#e5e7eb}
+.wrap{max-width:1440px;margin:auto;padding:0 5% 48px!important}
+.title h2{font-size:clamp(22px,2.3vw,30px);letter-spacing:-.5px}
+.market-cats{gap:18px!important}
+.market-cat{border-radius:18px!important;border-color:var(--dz-line)!important;box-shadow:0 4px 15px #10182808!important}
+.market-cat:hover{box-shadow:0 16px 32px #10182814!important}
+.market-cat img{background:linear-gradient(180deg,#fff,#f8f9fb)!important}
+.market-cat .cat-name{font-size:15px!important;padding:12px 14px 2px!important}
+.market-cat .count{padding:0 14px 13px!important;color:var(--dz-muted)!important}
+.category-slider{margin:30px 0!important;padding:22px!important;border:1px solid var(--dz-line)!important;border-radius:20px!important;background:#fff!important;box-shadow:0 5px 20px #10182805}
+.slider-head h2{font-size:22px!important;letter-spacing:-.4px}
+.slider-card{border-radius:14px!important;border-color:var(--dz-line)!important;box-shadow:0 2px 8px #10182806}
+.slider-card:hover{box-shadow:0 12px 26px #10182814!important}
+.slider-card img{background:#fafafa!important}
+.slider-btn{background:var(--dz-accent)!important;border-radius:9px!important}
+.card{border-radius:16px!important;border-color:var(--dz-line)!important;box-shadow:0 4px 15px #10182807}
+.card:hover{box-shadow:0 16px 32px #10182816!important}
+.card img{background:#fafafa!important}
+.btn{background:var(--dz-ink)!important;border-radius:10px!important}
+.card:hover .btn{background:var(--dz-accent)!important}
+.price,.slider-price{color:var(--dz-accent)!important}
+.market-sub,.signup{border-radius:20px!important;border-color:var(--dz-line)!important;box-shadow:0 8px 30px #10182808!important}
+.market-sub{align-items:flex-start!important}
+.market-sub-copy h2,.signup h2{letter-spacing:-.5px}
+.market-form button,.submit{background:var(--dz-accent)!important;border-radius:10px!important}
+.foot{background:#111827!important;color:#d0d5dd!important;line-height:1.8}
+.empty{border:1px solid var(--dz-line);border-radius:16px}
+@media(max-width:700px){.hero{margin:16px 4%!important}.wrap{padding-left:4%!important;padding-right:4%!important}.category-slider{padding:14px!important}.market-sub{display:block!important}.market-form{margin-top:18px}}
 </style></head><body>
 <div class="top">🔥 DealZone — Hot Deals & Smart Shopping</div>
 <header class="head"><a class="logo" href="index.html"><img src="logo.svg" alt="DealZone"></a><div class="search"><input id="search" placeholder="Search products..."><button onclick="goSearch()">Search</button></div></header>
@@ -58,7 +98,7 @@
 <button type="submit">S'inscrire</button>
 <datalist id="morocco-cities"></datalist>
 </form></section></section><section id="featured"><div class="title"><h2>Featured Deals</h2></div><div id="products" class="grid"></div></section></main>
-<footer class="foot">© DealZone · Product links may be affiliate links.</footer>
+<footer class="foot"><strong>DealZone</strong><br>Smart finds. Better deals.<br><a href="mailto:zbatayoub09@gmail.com" style="color:#fff;text-decoration:underline">Contact us: zbatayoub09@gmail.com</a><br>© DealZone · Product links may be affiliate links.</footer>
 <script>const moroccoCities=["Agadir","Ahfir","Ain Aouda","Ain Atiq","Ain Harrouda","Ain Taoujdate","Al Hoceima","Arfoud","Asilah","Assa","Azemmour","Azilal","Bab Berred","Beni Ansar","Beni Mellal","Berkane","Berrechid","Boujdour","Boulemane","Boumalne Dades","Bouskoura","Bouznika","Casablanca","Chefchaouen","Chichaoua","Dakhla","Dcheira El Jihadia","Demnate","El Hajeb","El Jadida","El Kelaa des Sraghna","Errachidia","Essaouira","Es-Semara","Fes","Figuig","Fnideq","Guelmim","Guercif","Ifrane","Inezgane","Jerada","Kelaat M'Gouna","Kenitra","Khemisset","Khenifra","Khouribga","Ksar El Kebir","Larache","M'Diq","Marrakech","Martil","Meknes","Midelt","Mohammedia","Moulay Bousselham","Nador","Ouarzazate","Ouezzane","Oujda","Rabat","Safi","Sale","Sefrou","Settat","Sidi Bennour","Sidi Ifni","Sidi Kacem","Sidi Slimane","Skhirat","Smara","Tafraoute","Tamesna","Tangier","Tan-Tan","Taourirt","Taroudant","Tata","Taza","Temara","Tetouan","Tinghir","Tiznit","Youssoufia","Zagora","Ait Melloul","Benguerir","Biougra","El Aaiun","Imzouren","Oulad Teima","Rissani","Sidi Yahya El Gharb","Souk El Arbaa","Talsint","Tarfaya","Tendrara","Tit Mellil","Zaio"];document.getElementById('morocco-cities').innerHTML=[...new Set(moroccoCities)].sort((a,b)=>a.localeCompare(b)).map(c=>'<option value="'+c.replace(/"/g,'&quot;')+'"></option>').join('');
 const OWNER='zbatayoub09-source',REPO='dealzone',BRANCH='main';let files=[],all=[];
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
