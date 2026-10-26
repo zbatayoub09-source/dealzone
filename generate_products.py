@@ -139,7 +139,7 @@ footer a{{color:#fff!important;text-decoration:underline!important}}
 <body>
 <div class="top">🔥 DealZone — Hot Deals & Smart Shopping</div>
 <header><a class="logo" href="../../index.html"><img src="../../logo.svg" alt="DealZone"></a><div class="search"><input id="q" placeholder="Search products..."><button onclick="search()">Search</button></div></header>
-<nav><a href="../../index.html">Home</a><a href="../../index.html#categories">Categories</a><a href="../../{slug(category)}.html">{esc(category)}</a></nav>
+<nav><a href="../../index.html">Home</a><a href="../../index.html#categories">Categories</a><a href="../../{slug(category)}.html">{esc(category)}</a><a href="mailto:zbatayoub09@gmail.com">Contact</a></nav>
 <main>
 <div class="crumb"><a href="../../index.html">Home</a> › <a href="../../{slug(category)}.html">{esc(category)}</a> › Product</div>
 <section class="product">
