@@ -158,6 +158,15 @@ def make_item(row, index, gemini_key="", columns=None):
     return {"title":title,"description":desc[:2000],"hashtags":tags,"image":image,"video":video,"link":link,"comment":comment,"key":key,"pid":pid}
 
 
+def facebook_comment(item):
+    """Prefer a CSV comment, and always include the direct product link when available."""
+    comment = (item.get("comment") or "").strip()
+    link = (item.get("link") or "").strip()
+    if link and link not in comment:
+        comment = f"{comment}\n\n{link}".strip()
+    return comment
+
+
 def save_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -387,11 +396,12 @@ class SocialPublisher:
                         previous=done[item["key"]]
                         # If a comment was added/edited in the CSV after the post was published,
                         # compare its hash rather than trusting an old comment_done=True flag.
-                        if isinstance(previous,dict) and item.get("comment") and previous.get("post_id"):
-                            comment_hash=hashlib.sha256(item["comment"].strip().encode("utf-8")).hexdigest()
+                        comment_text=facebook_comment(item)
+                        if isinstance(previous,dict) and comment_text and previous.get("post_id"):
+                            comment_hash=hashlib.sha256(comment_text.encode("utf-8")).hexdigest()
                             if previous.get("comment_hash") != comment_hash:
                                 try:
-                                    api_post(GRAPH_BASE,f"{previous['post_id']}/comments",{"message":item["comment"],"access_token":page.get("access_token","")},"Facebook comment API")
+                                    api_post(GRAPH_BASE,f"{previous['post_id']}/comments",{"message":comment_text,"access_token":page.get("access_token","")},"Facebook comment API")
                                     previous["comment_done"]=True
                                     previous["comment_hash"]=comment_hash
                                     save_json(state_path,state)
@@ -416,10 +426,11 @@ class SocialPublisher:
                         if not post_id: raise RuntimeError("Facebook ma rje3ch post ID.")
                         done[item["key"]]={"post_id":post_id,"comment_done":False,"comment_hash":""}
                         save_json(state_path,state)
-                        if item.get("comment"):
-                            api_post(GRAPH_BASE,f"{post_id}/comments",{"message":item["comment"],"access_token":page.get("access_token","")},"Facebook comment API")
+                        comment_text=facebook_comment(item)
+                        if comment_text:
+                            api_post(GRAPH_BASE,f"{post_id}/comments",{"message":comment_text,"access_token":page.get("access_token","")},"Facebook comment API")
                             done[item["key"]]["comment_done"]=True
-                            done[item["key"]]["comment_hash"]=hashlib.sha256(item["comment"].strip().encode("utf-8")).hexdigest()
+                            done[item["key"]]["comment_hash"]=hashlib.sha256(comment_text.encode("utf-8")).hexdigest()
                             save_json(state_path,state)
                         counts["Facebook"]+=1
                     except Exception as e:errors.append(f"Facebook / {page.get('name')}: {e}")
@@ -436,9 +447,8 @@ class SocialPublisher:
                     ig_mode=("video" if media=="Video only" else "image" if media=="Image only" else "text" if media=="Text only" else "image" if image.startswith("https://") else "video" if video.startswith("https://") else "text")
                     if ig_mode=="text":
                         errors.append(f"Instagram / {page.get('name')}: public HTTPS image ola video URL khas.");continue
-                    bio_url=self.links_page_url.get().strip()
-                    cta=(f"\n\n🛍️ Shop this and more: {bio_url}" if bio_url.startswith(("https://","http://")) else "\n\n🛍️ Shop this and more — link in bio.")
-                    caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}{cta}"[:2200]
+                    # Instagram captions should not contain the generic links-page CTA.
+                    caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"[:2200]
                     try:
                         if ig_mode=="video":
                             c=api_post(GRAPH_BASE,f"{iid}/media",{"media_type":"REELS","video_url":video,"caption":caption,"share_to_feed":"true","access_token":page.get("access_token","")},"Instagram Reels API")
