@@ -1,26 +1,35 @@
-# Publish Python + Google Sheets
+# DealZone Publisher — Google Sheets to Facebook
 
-Windows desktop app to read news from Google Sheets, select a Facebook Page, and publish a title, article text, and optional image. Blogger may be added after this flow is tested.
+Windows desktop application. Configuration is entered in the app window: Google Sheet ID, tab name, and Facebook User Access Token. No `.env` and no `RUN.bat` are required.
 
-## Setup (Windows)
-1. Download this folder and extract it.
-2. In Google Cloud, enable **Google Sheets API**.
-3. Create an OAuth Client ID with application type **Desktop app** and download its JSON file. Rename it to `client_secret.json` and place it beside `app.py` and `RUN.bat`.
-4. In the Google Auth Platform / OAuth consent screen, configure the app and add your Google account as a test user if the app is in Testing mode.
-5. Double-click `RUN.bat`. The first run creates `.env` from `.env.example` and opens it in Notepad.
-6. Set `SPREADSHEET_ID` to the long ID between `/d/` and `/edit` in your Google Sheets URL. Set `SHEET_NAME` to the worksheet tab name (default `News`, not the file title).
-7. Save `.env`, close Notepad, and run `RUN.bat` again. Click **Charger les actualités**. A Google sign-in browser window should open on first use; choose the account that can access the sheet and approve read-only access.
-8. If the sheet is not shared with that Google account, share it with that account as Viewer.
+## Files needed
+- `app.py`
+- `requirements.txt`
+- `client_secret.json` — downloaded OAuth Client JSON for a **Desktop app**, placed beside `app.py`. Never upload it to GitHub.
+- Python 3.10+ recommended.
 
-Never upload `.env`, `client_secret.json`, `token.json`, Facebook tokens, or `published_state.json` to GitHub.
+## One-time setup (Windows)
+1. Install Python and select **Add Python to PATH** during installation.
+2. Open the project folder in File Explorer, click the address bar, type `powershell`, and press Enter.
+3. Run these commands one by one:
+   ```powershell
+   py -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install --upgrade pip
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   .\.venv\Scripts\python.exe app.py
+   ```
+4. In the app window, paste the long Google Spreadsheet ID (the part between `/d/` and `/edit` in the sheet URL), enter the worksheet tab name (usually `News`), and paste your Facebook **User Access Token**. Click **7fed l-i3dadat**. The app saves these settings only on your PC.
+5. Click **Charger les actualités**. On first use, a Google sign-in window opens. Sign in with an account that has access to the spreadsheet and approve read-only access. Enable **Google Sheets API** in Google Cloud and add your account as a test user if the OAuth app is in Testing mode.
+6. Click **Charger mes pages Facebook**, select a page and a news item, then click Publish and confirm.
 
-The sheet expects columns A:D: Date, Image URL, Title, Full Article. The first row is treated as the header. The app does not publish automatically: select a page and a news item, then confirm Publish.
+## Google Sheet format
+Columns A:D: Date, Image URL, Title, Full Article. First row is treated as column headings. The Google Sheet must be accessible to the Google account used in the OAuth browser login.
 
 ## Facebook
-Set `FACEBOOK_USER_ACCESS_TOKEN` in `.env` to a user access token that can list the Pages you manage. The app reads each returned Page Access Token for publishing. Required Meta permissions and Page task access depend on your Meta app setup; commonly needed permissions include `pages_show_list`, `pages_read_engagement`, and `pages_manage_posts`. Never share or commit tokens.
+The token must be a Facebook User Access Token that can list pages you manage. Meta permissions and Page access/tasks must allow listing pages and publishing. Never paste tokens into GitHub or send them in chat. If Meta returns an API-version error, use a currently supported Graph API version.
 
-## Publication state
-Successful posts are stored locally in `published_state.json`, separately per page.
+## Local private files
+`client_secret.json`, `settings.json`, `token.json`, and `published_state.json` are local/private files and are excluded by `.gitignore`.
 
 ## Blogger
-Blogger is not implemented yet; first verify Google Sheets reading and Facebook publishing.
+Blogger publishing is not implemented yet.
