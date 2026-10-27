@@ -16,8 +16,8 @@ pip install -r requirements.txt
 if not exist .env (
   copy .env.example .env
   echo.
-  echo Created .env. Edit it and add your Google Sheets ID and Facebook Page Access Token.
-  echo Also put your Google service-account file here as credentials.json.
+  echo Created .env. Edit it and add your Google Sheets ID and Facebook User Access Token.
+  echo Put your downloaded Google Desktop OAuth JSON here as client_secret.json.
   notepad .env
   pause
   exit /b 0
