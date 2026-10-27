@@ -7,7 +7,9 @@ from pathlib import Path
 import gspread
 import requests
 from dotenv import load_dotenv
-from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
@@ -15,8 +17,9 @@ STATE_FILE = BASE_DIR / "published_state.json"
 
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 SHEET_NAME = os.getenv("SHEET_NAME", "News").strip() or "News"
-GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json").strip()
-FB_TOKEN = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "").strip()
+GOOGLE_OAUTH_FILE = os.getenv("GOOGLE_OAUTH_FILE", "client_secret.json").strip()
+GOOGLE_TOKEN_FILE = BASE_DIR / "token.json"
+FB_TOKEN = os.getenv("FACEBOOK_USER_ACCESS_TOKEN", "").strip()
 GRAPH_VERSION = os.getenv("GRAPH_API_VERSION", "v26.0").strip()
 GRAPH_ROOT = f"https://graph.facebook.com/{GRAPH_VERSION}"
 
@@ -33,14 +36,26 @@ def write_state(state):
 
 
 def sheets_client():
-    credentials_path = BASE_DIR / GOOGLE_CREDENTIALS_FILE
-    if not credentials_path.exists():
+    oauth_path = BASE_DIR / GOOGLE_OAUTH_FILE
+    if not oauth_path.exists():
         raise FileNotFoundError(
-            f"Google credentials file not found: {credentials_path}\n"
-            "Download the Google service-account JSON and save it as credentials.json."
+            f"Google OAuth file not found: {oauth_path}\\n"
+            "Put your downloaded Desktop OAuth JSON beside app.py and name it client_secret.json."
         )
     scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-    creds = Credentials.from_service_account_file(str(credentials_path), scopes=scopes)
+    creds = None
+    if GOOGLE_TOKEN_FILE.exists():
+        try:
+            creds = Credentials.from_authorized_user_file(str(GOOGLE_TOKEN_FILE), scopes)
+        except (ValueError, OSError):
+            creds = None
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(str(oauth_path), scopes)
+            creds = flow.run_local_server(port=0)
+        GOOGLE_TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
     return gspread.authorize(creds)
 
 
@@ -67,7 +82,7 @@ def fetch_news():
 
 def fetch_pages():
     if not FB_TOKEN or FB_TOKEN == "PUT_PAGE_ACCESS_TOKEN_HERE":
-        raise ValueError("Set FACEBOOK_PAGE_ACCESS_TOKEN in the local .env file first.")
+        raise ValueError("Set FACEBOOK_USER_ACCESS_TOKEN in the local .env file first.")
     response = requests.get(
         f"{GRAPH_ROOT}/me/accounts",
         params={"fields": "id,name,access_token,tasks", "access_token": FB_TOKEN},
