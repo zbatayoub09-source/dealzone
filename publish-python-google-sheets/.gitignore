@@ -6,3 +6,5 @@ credentials.json
 token.json
 *_token.json
 published_state.json
+client_secret.json
+settings.json
