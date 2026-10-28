@@ -7,7 +7,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-py -3 blogger_app.py
+py -3 blogger_app_images_fixed.py
 if errorlevel 1 (
   echo.
   echo Program stopped with an error. Read the message above.
