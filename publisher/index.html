@@ -33,7 +33,7 @@ $('facebookLogin').onclick=async()=>{authStatus.textContent='كنجربو تسج
 $('logoutBtn').onclick=async()=>{const {error}=await supabaseClient.auth.signOut();authStatus.textContent=error?'تعذر تسجيل الخروج: '+error.message:'تم تسجيل الخروج.';};
 supabaseClient.auth.getSession().then(({data,error})=>{if(error)authStatus.textContent='خطأ في التحقق: '+error.message;else showAuth(data.session);});
 supabaseClient.auth.onAuthStateChange((_event,session)=>showAuth(session));
-const $=id=>document.getElementById(id);let rows=[],headers=[],bloggerData=null;
+let rows=[],headers=[],bloggerData=null;
 function parseCSV(text){text=text.replace(/^\uFEFF/,'');const out=[];let row=[],field='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i],n=text[i+1];if(c==='"'&&quoted&&n==='"'){field+='"';i++;}else if(c==='"'){quoted=!quoted;}else if(c===','&&!quoted){row.push(field);field='';}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&n==='\n')i++;row.push(field);if(row.some(v=>v.trim()!==''))out.push(row);row=[];field='';}else field+=c;}row.push(field);if(row.some(v=>v.trim()!==''))out.push(row);return out;}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function updateEstimate(){const count=rows.length;const mins=Number($('interval').value||5);const max=Number($('limit').value||1);const planned=Math.min(count,max);const duration=Math.max(0,planned-1)*mins;$('estimate').textContent=count?('CSV rows: '+count+' · This run: up to '+planned+' posts · Estimated first-to-last interval: '+duration+' minutes ('+(duration/60).toFixed(1)+' hours), excluding platform delays and retries.'): 'Choose a CSV and posting delay to estimate queue duration.';}
