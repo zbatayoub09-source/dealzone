@@ -258,6 +258,7 @@ class BloggerApp:
         self.mode_var = tk.StringVar(value="draft")
         self.status_var = tk.StringVar(value="Connecti Blogger bach tbda.")
         self.limit_var = tk.StringVar(value="20")
+        self.interval_var = tk.StringVar(value="3")
         self.blogger_label_var = tk.StringVar(value="")
         self.blog_map = {}
         self.rows = []
@@ -335,6 +336,10 @@ class BloggerApp:
         gemini_row = ttk.Frame(outer); gemini_row.pack(fill="x"); ttk.Entry(gemini_row, textvariable=self.gemini_api_key_var, show="*").pack(side="left", fill="x", expand=True); ttk.Button(gemini_row, text="Get Gemini API key", command=lambda: webbrowser.open("https://aistudio.google.com/apikey")).pack(side="left", padx=(8, 0))
         ttk.Label(outer, text="API key kayb9a ghir f had session; ila khlitiha khawya, l-app ghadi تستعمل hashtags العادية.", wraplength=700).pack(anchor="w", pady=(3, 0))
         limits = ttk.Frame(outer); limits.pack(fill="x", pady=(14, 4)); ttk.Label(limits, text="Max posts this run:").pack(side="left"); ttk.Entry(limits, textvariable=self.limit_var, width=8).pack(side="left", padx=8); ttk.Label(limits, text="(start with 5–20 to test)").pack(side="left")
+        interval_row = ttk.Frame(outer); interval_row.pack(fill="x", pady=(6, 2))
+        ttk.Label(interval_row, text="Interval between posts:").pack(side="left")
+        ttk.Combobox(interval_row, textvariable=self.interval_var, values=["0", "2", "3", "5", "10", "15", "30", "60"], width=7, state="readonly").pack(side="left", padx=8)
+        ttk.Label(interval_row, text="minutes (0 = no wait; applies after each post and its social shares)").pack(side="left")
         self.start_btn = ttk.Button(outer, text="🚀  START BLOGGER", style="Primary.TButton", command=self.start_publish); self.start_btn.pack(anchor="w", pady=(16, 10))
         self.progress = ttk.Progressbar(outer, mode="determinate"); self.progress.pack(fill="x", pady=3); ttk.Label(outer, textvariable=self.status_var, wraplength=700).pack(anchor="w", pady=(5, 6)); ttk.Label(outer, text="Note: CSV, Google credentials, and Facebook Page token stay on this computer. Original CSV is not changed.", wraplength=700).pack(anchor="w", pady=(8, 0))
 
@@ -463,6 +468,8 @@ class BloggerApp:
             if limit < 1: raise ValueError()
         except ValueError: messagebox.showerror("Invalid limit", "Max posts khas ykon ra9m kber men 0."); return
         blog = self.blog_map[blog_key]; mode = self.mode_var.get()
+        try: interval_seconds = max(0, int(self.interval_var.get())) * 60
+        except ValueError: messagebox.showerror("Invalid interval", "Khtar interval b minutes."); return
         try: self.save_facebook_config()
         except Exception as e: messagebox.showerror("Facebook settings", f"Could not save Facebook settings locally: {e}"); return
         if (self.facebook_enabled_var.get() or self.instagram_enabled_var.get() or self.threads_enabled_var.get()) and mode != "publish": messagebox.showwarning("Social sharing", "Social sharing kaykhdem ghir mlli tkhtar Publish publicly. Drafts ma kaytpartagawch."); return
@@ -472,9 +479,9 @@ class BloggerApp:
             ok = messagebox.askyesno("Confirm public publishing", f"Ghadi tnشر max {limit} posts مباشرة للعموم f:\n{blog.get('name')}\n\nWash met2akked?")
             if not ok: return
         self.start_btn.configure(state="disabled"); self.progress["maximum"] = min(limit, len(self.rows)); self.progress["value"] = 0
-        threading.Thread(target=self._publish_worker, args=(blog, mode, limit), daemon=True).start()
+        threading.Thread(target=self._publish_worker, args=(blog, mode, limit, interval_seconds), daemon=True).start()
 
-    def _publish_worker(self, blog, mode, limit):
+    def _publish_worker(self, blog, mode, limit, interval_seconds=180):
         state = load_state()
         self.column_map = {"title": self.title_column_var.get(), "image": self.image_column_var.get(), "video": self.video_column_var.get(), "description": self.description_column_var.get(), "link": self.link_column_var.get()}
         manual_label = clean(self.blogger_label_var.get())
@@ -518,7 +525,9 @@ class BloggerApp:
                 self.root.after(0, lambda n=n, total=total, title=display_title: self._update_progress(n, total, title))
             except Exception as e:
                 errors += 1; self.root.after(0, lambda msg=str(e), title=item["title"]: self.status_var.set(f"Error on {title[:50]}: {msg[:180]}"))
-            time.sleep(0.3)
+            if interval_seconds and n < total:
+                self.root.after(0, lambda n=n, total=total, mins=interval_seconds // 60: self.status_var.set(f"{n}/{total}: waiting {mins} minute(s) before next post..."))
+                time.sleep(interval_seconds)
         self.root.after(0, lambda: self._publish_finished(done, skipped, errors, f"Finished: {done} new posts. Mode: {mode.upper()} ."))
 
     def _update_progress(self, n, total, title):
