@@ -337,7 +337,7 @@ class BloggerApp:
         ttk.Label(outer, text="Choose the exact CSV header for each field. If a field is not in your CSV, leave it on Auto-detect.", wraplength=700).pack(anchor="w", pady=(2, 0))
         label_row = ttk.Frame(outer); label_row.pack(fill="x", pady=(10, 2))
         ttk.Label(label_row, text="Blogger Label / Category", width=22).pack(side="left")
-        ttk.Entry(label_row, textvariable=self.blogger_label_var).pack(side="left", fill="x", expand=True")
+        ttk.Entry(label_row, textvariable=self.blogger_label_var).pack(side="left", fill="x", expand=True)
         ttk.Label(outer, text="كتب هنا الـ Label اللي بغيتي فـ Blogger، مثلاً: ملابس نساء. ما غاديش ياخذ التصنيف من CSV.", wraplength=700).pack(anchor="w", pady=(2, 0))
         ttk.Label(outer, text="4. Publishing mode").pack(anchor="w", pady=(14, 4))
         modes = ttk.Frame(outer); modes.pack(anchor="w")
