@@ -29,6 +29,7 @@ GEMINI_MODEL = "gemini-2.5-flash"
 
 
 GEO_LOCATION_FILE = APP_DIR / "blogger_location.json"
+BLOG_LOCATIONS_FILE = APP_DIR / "blogger_blog_locations.json"
 
 def geocode_blogger_location(city, country):
     """Resolve a manually selected city/country to Blogger's native post location."""
@@ -271,6 +272,7 @@ class BloggerApp:
         self.root.geometry("780x760")
         self.root.minsize(700, 680)
         self.blog_var = tk.StringVar()
+        self.blog_locations = {}
         self.csv_var = tk.StringVar(value="Mazal ma khtart ta CSV")
         self.mode_var = tk.StringVar(value="draft")
         self.status_var = tk.StringVar(value="Connecti Blogger bach tbda.")
@@ -301,6 +303,10 @@ class BloggerApp:
             saved_location = json.loads(GEO_LOCATION_FILE.read_text(encoding="utf-8"))
         except Exception:
             saved_location = {}
+        try:
+            self.blog_locations = json.loads(BLOG_LOCATIONS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            self.blog_locations = {}
         self.geo_country_var = tk.StringVar(value=saved_location.get("country", ""))
         self.geo_city_var = tk.StringVar(value=saved_location.get("city", ""))
         self.build_ui()
@@ -323,9 +329,11 @@ class BloggerApp:
         top = ttk.Frame(outer); top.pack(fill="x", pady=5)
         self.connect_btn = ttk.Button(top, text="1. Connect Blogger", command=self.connect); self.connect_btn.pack(side="left")
         self.connection_label = ttk.Label(top, text="Not connected"); self.connection_label.pack(side="left", padx=12)
-        ttk.Label(outer, text="2. Choose your Blogger blog").pack(anchor="w", pady=(14, 4))
-        blogrow = ttk.Frame(outer); blogrow.pack(fill="x")
-        self.blog_combo = ttk.Combobox(blogrow, textvariable=self.blog_var, state="readonly"); self.blog_combo.pack(side="left", fill="x", expand=True)
+        ttk.Label(outer, text="2. Choose Blogger blogs (Ctrl/Shift for multiple)").pack(anchor="w", pady=(14, 4))
+        self.blogs_list = tk.Listbox(outer, height=6, selectmode=tk.EXTENDED, exportselection=False)
+        self.blogs_list.pack(fill="x")
+        self.blogs_list.bind("<<ListboxSelect>>", self.on_blog_selection_change)
+        ttk.Label(outer, text="Select one blog below to edit its own country and city. Multiple selected blogs can publish the same CSV.", wraplength=700).pack(anchor="w", pady=(3, 0))
         ttk.Label(outer, text="3. Choose a CSV file").pack(anchor="w", pady=(14, 4))
         csvrow = ttk.Frame(outer); csvrow.pack(fill="x")
         ttk.Entry(csvrow, textvariable=self.csv_var, state="readonly").pack(side="left", fill="x", expand=True); ttk.Button(csvrow, text="Browse CSV", command=self.choose_csv).pack(side="left", padx=(8, 0))
@@ -358,13 +366,14 @@ class BloggerApp:
         ttk.Label(outer, text="6. Gemini API — optional: generate better hashtags per product").pack(anchor="w", pady=(14, 3))
         gemini_row = ttk.Frame(outer); gemini_row.pack(fill="x"); ttk.Entry(gemini_row, textvariable=self.gemini_api_key_var, show="*").pack(side="left", fill="x", expand=True); ttk.Button(gemini_row, text="Get Gemini API key", command=lambda: webbrowser.open("https://aistudio.google.com/apikey")).pack(side="left", padx=(8, 0))
         ttk.Label(outer, text="API key kayb9a ghir f had session; ila khlitiha khawya, l-app ghadi تستعمل hashtags العادية.", wraplength=700).pack(anchor="w", pady=(3, 0))
-        ttk.Label(outer, text="6. Blogger post location (optional — country and city)").pack(anchor="w", pady=(14, 4))
+        ttk.Label(outer, text="7. Location for the selected blog (optional)").pack(anchor="w", pady=(14, 4))
         geo_row = ttk.Frame(outer); geo_row.pack(fill="x", pady=2)
         ttk.Label(geo_row, text="Country", width=10).pack(side="left")
         ttk.Entry(geo_row, textvariable=self.geo_country_var, width=24).pack(side="left", padx=(0, 10))
         ttk.Label(geo_row, text="City").pack(side="left")
         ttk.Entry(geo_row, textvariable=self.geo_city_var).pack(side="left", fill="x", expand=True)
-        ttk.Label(outer, text="Location kayt7et f Blogger post metadata (ma kayban-ch f contenu). Khlliha khawya ila ma bghitich geotag. Kattsajjel f had PC.", wraplength=700).pack(anchor="w", pady=(2, 0))
+        ttk.Button(outer, text="Save location for selected blog", command=self.save_selected_blog_location).pack(anchor="w", pady=(4, 2))
+        ttk.Label(outer, text="Location kayt7et f Blogger post metadata (ma kayban-ch f contenu). Kol blog 3ando country/city بوحدو.", wraplength=700).pack(anchor="w", pady=(2, 0))
         limits = ttk.Frame(outer); limits.pack(fill="x", pady=(14, 4)); ttk.Label(limits, text="Max posts this run:").pack(side="left"); ttk.Entry(limits, textvariable=self.limit_var, width=8).pack(side="left", padx=8); ttk.Label(limits, text="(start with 5–20 to test)").pack(side="left")
         interval_row = ttk.Frame(outer); interval_row.pack(fill="x", pady=(6, 2))
         ttk.Label(interval_row, text="Interval between posts:").pack(side="left")
@@ -456,6 +465,32 @@ class BloggerApp:
         if errors: raise RuntimeError("Posted: " + "; ".join(posted) + " | Failed: " + "; ".join(errors))
         return "; ".join(posted)
 
+
+    def selected_blogger_blogs(self):
+        if not hasattr(self, "blogs_list"): return []
+        return [self.blog_map[self.blogs_list.get(i)] for i in self.blogs_list.curselection()]
+
+    def on_blog_selection_change(self, _event=None):
+        selected = self.selected_blogger_blogs()
+        if len(selected) == 1:
+            blog = selected[0]
+            loc = self.blog_locations.get(str(blog.get("id")), {})
+            self.geo_country_var.set(loc.get("country", ""))
+            self.geo_city_var.set(loc.get("city", ""))
+        elif len(selected) > 1:
+            self.status_var.set(f"{len(selected)} blogs selected. Select one blog to edit its location; saved locations remain independent.")
+
+    def save_selected_blog_location(self):
+        selected = self.selected_blogger_blogs()
+        if len(selected) != 1:
+            messagebox.showwarning("Select one blog", "Khtar blog wa7ed بوحدو bach tsajjel country/city dyalo.")
+            return
+        blog = selected[0]
+        self.blog_locations[str(blog["id"])] = {"name": blog.get("name", ""), "country": self.geo_country_var.get().strip(), "city": self.geo_city_var.get().strip()}
+        BLOG_LOCATIONS_FILE.write_text(json.dumps(self.blog_locations, ensure_ascii=False, indent=2), encoding="utf-8")
+        GEO_LOCATION_FILE.write_text(json.dumps({"country": self.geo_country_var.get().strip(), "city": self.geo_city_var.get().strip()}, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.status_var.set("Location saved for " + str(blog.get("name", "selected blog")) + ".")
+
     def connect(self):
         self.connect_btn.configure(state="disabled"); self.status_var.set("Kanrbt m3a Google Blogger..."); threading.Thread(target=self._connect_worker, daemon=True).start()
 
@@ -468,7 +503,12 @@ class BloggerApp:
 
     def _connected(self, blogs):
         global BLOGS
-        BLOGS = blogs; self.blog_map = {f"{b.get('name','Blogger')} — {b.get('url','')}": b for b in blogs}; self.blog_combo["values"] = list(self.blog_map.keys()); self.blog_combo.current(0); self.connection_label.configure(text="Connected ✓"); self.status_var.set(f"Connected. L9ina {len(blogs)} blog(s)."); self.connect_btn.configure(state="normal", text="Reconnect Blogger"); self.connected = True
+        BLOGS = blogs
+        self.blog_map = {f"{b.get('name','Blogger')} — {b.get('url','')}": b for b in blogs}
+        self.blogs_list.delete(0, "end")
+        for key in self.blog_map: self.blogs_list.insert("end", key)
+        if blogs: self.blogs_list.selection_set(0); self.on_blog_selection_change()
+        self.connection_label.configure(text="Connected ✓"); self.status_var.set(f"Connected. L9ina {len(blogs)} blog(s)."); self.connect_btn.configure(state="normal", text="Reconnect Blogger"); self.connected = True
 
     def _connect_error(self, message):
         self.connect_btn.configure(state="normal"); self.status_var.set("Connection failed."); messagebox.showerror("Blogger connection error", message + "\n\nT2akked men client_secret.json w Blogger API.")
@@ -491,13 +531,13 @@ class BloggerApp:
     def start_publish(self):
         if not self.connected or not SERVICE: messagebox.showwarning("Connect first", "Klik 3la Connect Blogger lwl."); return
         if not self.rows: messagebox.showwarning("Choose CSV", "Khtar CSV lwl."); return
-        blog_key = self.blog_var.get()
-        if blog_key not in self.blog_map: messagebox.showwarning("Choose blog", "Khtar blog men l-list."); return
+        selected_blogs = self.selected_blogger_blogs()
+        if not selected_blogs: messagebox.showwarning("Choose blogs", "Khtar blog wa7ed 3la l-a9al men l-list."); return
         try:
             limit = int(self.limit_var.get())
             if limit < 1: raise ValueError()
         except ValueError: messagebox.showerror("Invalid limit", "Max posts khas ykon ra9m kber men 0."); return
-        blog = self.blog_map[blog_key]; mode = self.mode_var.get()
+        mode = self.mode_var.get()
         try: interval_seconds = max(0, int(self.interval_var.get())) * 60
         except ValueError: messagebox.showerror("Invalid interval", "Khtar interval b minutes."); return
         try: self.save_facebook_config()
@@ -506,66 +546,82 @@ class BloggerApp:
         if (self.facebook_enabled_var.get() or self.instagram_enabled_var.get()) and not self.selected_facebook_pages(): messagebox.showwarning("Social settings", "Dkhel Facebook User Access Token, klik Load all Facebook Pages, w khtar Page."); return
         if self.threads_enabled_var.get() and (not self.threads_user_id_var.get().strip() or not self.threads_token_var.get().strip()): messagebox.showwarning("Threads settings", "Dkhel Threads User ID w Access Token, ola 7yed check dyal Threads."); return
         if mode == "publish":
-            ok = messagebox.askyesno("Confirm public publishing", f"Ghadi tnشر max {limit} posts مباشرة للعموم f:\n{blog.get('name')}\n\nWash met2akked?")
+            ok = messagebox.askyesno("Confirm public publishing", f"Ghadi tnشر max {limit} posts f kol blog مباشرة للعموم f:\n" + "\n".join(b.get("name", "Blogger") for b in selected_blogs) + "\n\nWash met2akked?")
             if not ok: return
         self.start_btn.configure(state="disabled"); self.progress["maximum"] = min(limit, len(self.rows)); self.progress["value"] = 0
-        threading.Thread(target=self._publish_worker, args=(blog, mode, limit, interval_seconds), daemon=True).start()
+        threading.Thread(target=self._publish_worker, args=(selected_blogs, mode, limit, interval_seconds), daemon=True).start()
 
-    def _publish_worker(self, blog, mode, limit, interval_seconds=180):
+    def _publish_worker(self, blogs, mode, limit, interval_seconds=180):
         state = load_state()
         self.column_map = {"title": self.title_column_var.get(), "image": self.image_column_var.get(), "video": self.video_column_var.get(), "description": self.description_column_var.get(), "link": self.link_column_var.get()}
         manual_label = clean(self.blogger_label_var.get())
-        file_key = str(Path(self.csv_var.get()).resolve()); file_state = state.setdefault(file_key, {}); done = 0; skipped = 0; errors = 0; candidates = []
-        for i, row in enumerate(self.rows, start=1):
-            item = product_data(row, i, self.column_map)
-            if item["key"] in file_state: skipped += 1; continue
-            candidates.append((i, item))
-            if len(candidates) >= limit: break
-        total = len(candidates)
-        if not total:
-            self.root.after(0, lambda: self._publish_finished(0, skipped, errors, "No new products left in this CSV.")); return
-        for n, (i, item) in enumerate(candidates, start=1):
-            try:
-                gemini_key = self.gemini_api_key_var.get().strip()
-                if gemini_key:
-                    try: item["hashtags"] = gemini_hashtags(item["title"], item["description"], gemini_key)
-                    except Exception as gemini_error: self.root.after(0, lambda msg=str(gemini_error): self.status_var.set("Gemini failed; using fallback hashtags. " + msg[:150]))
-                labels = [clean(x) for x in re.split(r"[,;|]", manual_label) if clean(x)]
-                labels = list(dict.fromkeys(labels))[:20]
-                body = {"kind": "blogger#post", "blog": {"id": blog["id"]}, "title": item["title"], "content": make_html(item)}
-                geo_country = self.geo_country_var.get().strip()
-                geo_city = self.geo_city_var.get().strip()
-                if geo_country or geo_city:
-                    location = geocode_blogger_location(geo_city, geo_country)
-                    if location:
-                        body["location"] = location
-                        GEO_LOCATION_FILE.write_text(json.dumps({"country": geo_country, "city": geo_city}, ensure_ascii=False, indent=2), encoding="utf-8")
-                if labels: body["labels"] = labels
-                result = SERVICE.posts().insert(blogId=blog["id"], body=body, isDraft=(mode == "draft")).execute()
-                social_notes = []; caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}\n\n{result.get('url', '')}".strip()
-                if mode == "publish" and self.facebook_enabled_var.get():
-                    try: fb_result = self.share_to_facebook(item, result.get("url", "")); social_notes.append(f"Facebook OK: {fb_result}")
-                    except Exception as social_error: social_notes.append(f"Facebook FAILED: {str(social_error)[:260]}"); errors += 1
-                if mode == "publish" and self.instagram_enabled_var.get():
-                    ig_ok, ig_errors = [], []
-                    for page in self.selected_facebook_pages():
-                        try: ig_ok.append(f"{page.get('name', page.get('id'))}: {publish_instagram(item, page, caption)}")
-                        except Exception as e: ig_errors.append(f"{page.get('name', page.get('id'))}: {str(e)[:240]}")
-                    if ig_ok: social_notes.append("Instagram OK: " + "; ".join(ig_ok))
-                    if ig_errors: social_notes.append("Instagram FAILED: " + "; ".join(ig_errors)); errors += len(ig_errors)
-                if mode == "publish" and self.threads_enabled_var.get():
-                    try: social_notes.append(f"Threads OK: {publish_threads(item, self.threads_user_id_var.get().strip(), self.threads_token_var.get().strip(), caption)}")
-                    except Exception as e: social_notes.append(f"Threads FAILED: {str(e)[:240]}"); errors += 1
-                file_state[item["key"]] = {"post_id": result.get("id"), "url": result.get("url"), "mode": mode, "time": time.strftime("%Y-%m-%d %H:%M:%S"), "labels": labels, "social": social_notes}
-                save_state(state); done += 1
-                display_title = item["title"] + (f" | {' | '.join(social_notes)}" if social_notes else "")
-                self.root.after(0, lambda n=n, total=total, title=display_title: self._update_progress(n, total, title))
-            except Exception as e:
-                errors += 1; self.root.after(0, lambda msg=str(e), title=item["title"]: self.status_var.set(f"Error on {title[:50]}: {msg[:180]}"))
-            if interval_seconds and n < total:
-                self.root.after(0, lambda n=n, total=total, mins=interval_seconds // 60: self.status_var.set(f"{n}/{total}: waiting {mins} minute(s) before next post..."))
-                time.sleep(interval_seconds)
-        self.root.after(0, lambda: self._publish_finished(done, skipped, errors, f"Finished: {done} new posts. Mode: {mode.upper()} ."))
+        file_key = str(Path(self.csv_var.get()).resolve())
+        done = 0; skipped = 0; errors = 0
+        total_all = min(limit, len(self.rows)) * len(blogs)
+        progress = 0
+        for blog in blogs:
+            blog_id = str(blog["id"])
+            blog_state_key = file_key + "::blog:" + blog_id
+            file_state = state.setdefault(blog_state_key, {})
+            candidates = []
+            for i, row in enumerate(self.rows, start=1):
+                item = product_data(row, i, self.column_map)
+                if item["key"] in file_state:
+                    skipped += 1
+                    continue
+                candidates.append((i, item))
+                if len(candidates) >= limit: break
+            if not candidates:
+                continue
+            location_settings = self.blog_locations.get(blog_id, {})
+            geo_country = str(location_settings.get("country", "")).strip()
+            geo_city = str(location_settings.get("city", "")).strip()
+            resolved_location = None
+            if geo_country or geo_city:
+                try:
+                    resolved_location = geocode_blogger_location(geo_city, geo_country)
+                except Exception as e:
+                    errors += len(candidates)
+                    self.root.after(0, lambda name=blog.get("name", "Blogger"), msg=str(e): self.status_var.set(f"Location error for {name}: {msg[:180]}"))
+                    continue
+            for n, (i, item) in enumerate(candidates, start=1):
+                try:
+                    gemini_key = self.gemini_api_key_var.get().strip()
+                    if gemini_key:
+                        try: item["hashtags"] = gemini_hashtags(item["title"], item["description"], gemini_key)
+                        except Exception as gemini_error: self.root.after(0, lambda msg=str(gemini_error): self.status_var.set("Gemini failed; using fallback hashtags. " + msg[:150]))
+                    labels = [clean(x) for x in re.split(r"[,;|]", manual_label) if clean(x)]
+                    labels = list(dict.fromkeys(labels))[:20]
+                    body = {"kind": "blogger#post", "blog": {"id": blog_id}, "title": item["title"], "content": make_html(item)}
+                    if resolved_location: body["location"] = resolved_location
+                    if labels: body["labels"] = labels
+                    result = SERVICE.posts().insert(blogId=blog_id, body=body, isDraft=(mode == "draft")).execute()
+                    social_notes = []
+                    caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}\n\n{result.get('url', '')}".strip()
+                    if mode == "publish" and self.facebook_enabled_var.get():
+                        try: fb_result = self.share_to_facebook(item, result.get("url", "")); social_notes.append(f"Facebook OK: {fb_result}")
+                        except Exception as social_error: social_notes.append(f"Facebook FAILED: {str(social_error)[:260]}"); errors += 1
+                    if mode == "publish" and self.instagram_enabled_var.get():
+                        ig_ok, ig_errors = [], []
+                        for page in self.selected_facebook_pages():
+                            try: ig_ok.append(f"{page.get('name', page.get('id'))}: {publish_instagram(item, page, caption)}")
+                            except Exception as e: ig_errors.append(f"{page.get('name', page.get('id'))}: {str(e)[:240]}")
+                        if ig_ok: social_notes.append("Instagram OK: " + "; ".join(ig_ok))
+                        if ig_errors: social_notes.append("Instagram FAILED: " + "; ".join(ig_errors)); errors += len(ig_errors)
+                    if mode == "publish" and self.threads_enabled_var.get():
+                        try: social_notes.append(f"Threads OK: {publish_threads(item, self.threads_user_id_var.get().strip(), self.threads_token_var.get().strip(), caption)}")
+                        except Exception as e: social_notes.append(f"Threads FAILED: {str(e)[:240]}"); errors += 1
+                    file_state[item["key"]] = {"post_id": result.get("id"), "url": result.get("url"), "mode": mode, "blog_id": blog_id, "blog_name": blog.get("name"), "time": time.strftime("%Y-%m-%d %H:%M:%S"), "labels": labels, "location": location_settings, "social": social_notes}
+                    save_state(state); done += 1; progress += 1
+                    display_title = f"{blog.get('name', 'Blogger')}: {item['title']}" + (f" | {' | '.join(social_notes)}" if social_notes else "")
+                    self.root.after(0, lambda n=progress, total=total_all, title=display_title: self._update_progress(n, total, title))
+                except Exception as e:
+                    errors += 1
+                    self.root.after(0, lambda msg=str(e), title=item["title"], name=blog.get("name", "Blogger"): self.status_var.set(f"{name} — {title[:45]}: {msg[:180]}"))
+                if interval_seconds and n < len(candidates):
+                    self.root.after(0, lambda n=n, total=len(candidates), mins=interval_seconds // 60, name=blog.get("name", "Blogger"): self.status_var.set(f"{name}: {n}/{total}; waiting {mins} minute(s)..."))
+                    time.sleep(interval_seconds)
+        self.root.after(0, lambda: self._publish_finished(done, skipped, errors, f"Finished: {done} new posts across {len(blogs)} selected blog(s). Mode: {mode.upper()}."))
 
     def _update_progress(self, n, total, title):
         self.progress["maximum"] = total; self.progress["value"] = n; self.status_var.set(f"{n}/{total}: {title[:100]}")
