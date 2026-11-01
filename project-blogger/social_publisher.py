@@ -199,7 +199,7 @@ class SocialPublisher:
         self.csv_var=tk.StringVar(value="Ma khtart ta CSV")
         self.status=tk.StringVar(value="Khtar CSV bach tbda.")
         self.limit=tk.StringVar(value="20")
-        self.interval=tk.StringVar(value="3")
+        self.interval=tk.StringVar(value="30")
         self.output_dir=tk.StringVar(value=str(APP_DIR/"output"))
         self.facebook_token=tk.StringVar(); self.facebook_page_id=tk.StringVar()
         self.threads_user_id=tk.StringVar(); self.threads_token=tk.StringVar()
@@ -274,8 +274,8 @@ class SocialPublisher:
         ttk.Label(main,text="3. Max products f had l-run").pack(anchor="w",pady=(10,3))
         ttk.Entry(main,textvariable=self.limit,width=10).pack(anchor="w")
         ttk.Label(main,text="4a. Interval between successful posts (minutes)").pack(anchor="w",pady=(8,2))
-        ttk.Combobox(main,textvariable=self.interval,values=["0","2","3","5","10","15","30","60"],state="readonly",width=10).pack(anchor="w")
-        ttk.Label(main,text="0 = no wait. Delay is applied after each successful Facebook / Instagram / Threads post.").pack(anchor="w",pady=(2,4))
+        ttk.Combobox(main,textvariable=self.interval,values=["0","5","10","15","30","45","60","90","120"],state="readonly",width=10).pack(anchor="w")
+        ttk.Label(main,text="0 = no wait. Delay is applied after each successful Facebook / Instagram / Threads post. Default: 30 minutes.").pack(anchor="w",pady=(2,4))
         ttk.Label(main,text="4. Output folder").pack(anchor="w",pady=(10,3))
         orow=ttk.Frame(main); orow.pack(fill="x")
         ttk.Entry(orow,textvariable=self.output_dir).pack(side="left",fill="x",expand=True)
@@ -397,8 +397,9 @@ class SocialPublisher:
 
         if "Facebook" in platforms:
             for page in selected:
-                pid=str(page["id"]);done=fb_done.setdefault(pid,{})
+                pid=str(page["id"]);done=fb_done.setdefault(pid,{});fb_page_done=0
                 for row,item in prepared:
+                    if fb_page_done>=limit:break
                     if item["key"] in done:
                         previous=done[item["key"]]
                         # If a comment was added/edited in the CSV after the post was published,
@@ -439,8 +440,8 @@ class SocialPublisher:
                             done[item["key"]]["comment_done"]=True
                             done[item["key"]]["comment_hash"]=hashlib.sha256(comment_text.encode("utf-8")).hexdigest()
                             save_json(state_path,state)
-                        counts["Facebook"]+=1
-                        if interval_seconds: time.sleep(interval_seconds)
+                        counts["Facebook"]+=1;fb_page_done+=1
+                        if interval_seconds and fb_page_done<limit: time.sleep(interval_seconds)
                     except Exception as e:errors.append(f"Facebook / {page.get('name')}: {e}")
 
         if "Instagram" in platforms:
@@ -452,7 +453,7 @@ class SocialPublisher:
                 for row,item in prepared:
                     if item["key"] in done:continue
                     video=item.get("video","").strip();image=item.get("image","").strip();media=self.media_mode.get()
-                    ig_mode=("video" if media=="Video only" else "image" if media=="Image only" else "text" if media=="Text only" else "image" if image.startswith("https://") else "video" if video.startswith("https://") else "text")
+                    ig_mode=("video" if media=="Video only" else "image" if media=="Image only" else "text" if media=="Text only" else "video" if video.startswith("https://") else "image" if image.startswith("https://") else "text")
                     if ig_mode=="text":
                         errors.append(f"Instagram / {page.get('name')}: public HTTPS image ola video URL khas.");continue
                     # Instagram captions should not contain the generic links-page CTA.
