@@ -199,7 +199,7 @@ class SocialPublisher:
         self.csv_var=tk.StringVar(value="Ma khtart ta CSV")
         self.status=tk.StringVar(value="Khtar CSV bach tbda.")
         self.limit=tk.StringVar(value="20")
-        self.interval=tk.StringVar(value="30")
+        self.interval=tk.StringVar(value="5")
         self.output_dir=tk.StringVar(value=str(APP_DIR/"output"))
         self.facebook_token=tk.StringVar(); self.facebook_page_id=tk.StringVar()
         self.threads_user_id=tk.StringVar(); self.threads_token=tk.StringVar()
@@ -274,8 +274,8 @@ class SocialPublisher:
         ttk.Label(main,text="3. Max products f had l-run").pack(anchor="w",pady=(10,3))
         ttk.Entry(main,textvariable=self.limit,width=10).pack(anchor="w")
         ttk.Label(main,text="4a. Interval between successful posts (minutes)").pack(anchor="w",pady=(8,2))
-        ttk.Combobox(main,textvariable=self.interval,values=["0","5","10","15","30","45","60","90","120"],state="readonly",width=10).pack(anchor="w")
-        ttk.Label(main,text="0 = no wait. Delay is applied after each successful Facebook / Instagram / Threads post. Default: 30 minutes.").pack(anchor="w",pady=(2,4))
+        ttk.Combobox(main,textvariable=self.interval,values=["0","1","2","3","5","10","15","30","60"],state="readonly",width=10).pack(anchor="w")
+        ttk.Label(main,text="0 = no wait. Delay is applied after each successful Facebook / Instagram / Threads post. Default: 5 minutes.").pack(anchor="w",pady=(2,4))
         ttk.Label(main,text="4. Output folder").pack(anchor="w",pady=(10,3))
         orow=ttk.Frame(main); orow.pack(fill="x")
         ttk.Entry(orow,textvariable=self.output_dir).pack(side="left",fill="x",expand=True)
@@ -434,13 +434,18 @@ class SocialPublisher:
                         if not post_id: raise RuntimeError("Facebook ma rje3ch post ID.")
                         done[item["key"]]={"post_id":post_id,"comment_done":False,"comment_hash":""}
                         save_json(state_path,state)
+                        # Count a published post even if its separate comment fails.
+                        counts["Facebook"]+=1
+                        fb_page_done+=1
                         comment_text=facebook_comment(item)
                         if comment_text:
-                            api_post(GRAPH_BASE,f"{post_id}/comments",{"message":comment_text,"access_token":page.get("access_token","")},"Facebook comment API")
-                            done[item["key"]]["comment_done"]=True
-                            done[item["key"]]["comment_hash"]=hashlib.sha256(comment_text.encode("utf-8")).hexdigest()
-                            save_json(state_path,state)
-                        counts["Facebook"]+=1;fb_page_done+=1
+                            try:
+                                api_post(GRAPH_BASE,f"{post_id}/comments",{"message":comment_text,"access_token":page.get("access_token","")},"Facebook comment API")
+                                done[item["key"]]["comment_done"]=True
+                                done[item["key"]]["comment_hash"]=hashlib.sha256(comment_text.encode("utf-8")).hexdigest()
+                                save_json(state_path,state)
+                            except Exception as comment_error:
+                                errors.append(f"Facebook comment / {page.get('name')} (post published, comment failed): {comment_error}")
                         if interval_seconds and fb_page_done<limit: time.sleep(interval_seconds)
                     except Exception as e:errors.append(f"Facebook / {page.get('name')}: {e}")
 
@@ -478,7 +483,7 @@ class SocialPublisher:
                             container_id=c["id"]
                         api_post(GRAPH_BASE,f"{iid}/media_publish",{"creation_id":container_id,"access_token":page.get("access_token","")},"Instagram API")
                         done[item["key"]]=1;counts["Instagram"]+=1;ig_page_done+=1;save_json(state_path,state)
-                        if interval_seconds: time.sleep(interval_seconds)
+                        if interval_seconds and ig_page_done<limit: time.sleep(interval_seconds)
                         if ig_page_done>=limit:break
                     except Exception as e:errors.append(f"Instagram / {page.get('name')}: {e}")
 
@@ -488,7 +493,7 @@ class SocialPublisher:
                 if item["key"] in done:continue
                 try:
                     done[item["key"]]=publish_threads(item,uid,token);counts["Threads"]+=1;thread_page_done+=1;save_json(state_path,state)
-                    if interval_seconds: time.sleep(interval_seconds)
+                    if interval_seconds and thread_page_done<limit: time.sleep(interval_seconds)
                     if thread_page_done>=limit:break
                 except Exception as e:errors.append(f"Threads: {e}")
 
