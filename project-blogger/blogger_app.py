@@ -27,6 +27,23 @@ GRAPH_BASE = "https://graph.facebook.com/v26.0"
 THREADS_BASE = "https://graph.threads.net/v1.0"
 GEMINI_MODEL = "gemini-2.5-flash"
 
+
+GEO_LOCATION_FILE = APP_DIR / "blogger_location.json"
+
+def geocode_blogger_location(city, country):
+    """Resolve a manually selected city/country to Blogger's native post location."""
+    query = ", ".join(x for x in (city.strip(), country.strip()) if x)
+    if not query:
+        return None
+    url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode({"q": query, "format": "jsonv2", "limit": 1})
+    request = urllib.request.Request(url, headers={"User-Agent": "DealZone-Blogger/1.0 (Blogger post geotagging)"})
+    with urllib.request.urlopen(request, timeout=20) as response:
+        results = json.loads(response.read().decode("utf-8"))
+    if not results:
+        raise ValueError("Ma l9itch had l-mdina f had dawla. T2ekked men l-ktaba.")
+    place = results[0]
+    return {"name": query, "lat": float(place["lat"]), "lng": float(place["lon"])}
+
 def meta_post(endpoint, params, base=GRAPH_BASE):
     payload = urllib.parse.urlencode(params).encode("utf-8")
     request = urllib.request.Request(f"{base}/{endpoint.lstrip('/')}", data=payload, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
@@ -280,6 +297,12 @@ class BloggerApp:
         self.threads_user_id_var = tk.StringVar(value="")
         self.threads_token_var = tk.StringVar(value="")
         self.gemini_api_key_var = tk.StringVar(value="")
+        try:
+            saved_location = json.loads(GEO_LOCATION_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            saved_location = {}
+        self.geo_country_var = tk.StringVar(value=saved_location.get("country", ""))
+        self.geo_city_var = tk.StringVar(value=saved_location.get("city", ""))
         self.build_ui()
 
     def build_ui(self):
@@ -335,6 +358,13 @@ class BloggerApp:
         ttk.Label(outer, text="6. Gemini API — optional: generate better hashtags per product").pack(anchor="w", pady=(14, 3))
         gemini_row = ttk.Frame(outer); gemini_row.pack(fill="x"); ttk.Entry(gemini_row, textvariable=self.gemini_api_key_var, show="*").pack(side="left", fill="x", expand=True); ttk.Button(gemini_row, text="Get Gemini API key", command=lambda: webbrowser.open("https://aistudio.google.com/apikey")).pack(side="left", padx=(8, 0))
         ttk.Label(outer, text="API key kayb9a ghir f had session; ila khlitiha khawya, l-app ghadi تستعمل hashtags العادية.", wraplength=700).pack(anchor="w", pady=(3, 0))
+        ttk.Label(outer, text="6. Blogger post location (optional — country and city)").pack(anchor="w", pady=(14, 4))
+        geo_row = ttk.Frame(outer); geo_row.pack(fill="x", pady=2)
+        ttk.Label(geo_row, text="Country", width=10).pack(side="left")
+        ttk.Entry(geo_row, textvariable=self.geo_country_var, width=24).pack(side="left", padx=(0, 10))
+        ttk.Label(geo_row, text="City").pack(side="left")
+        ttk.Entry(geo_row, textvariable=self.geo_city_var).pack(side="left", fill="x", expand=True)
+        ttk.Label(outer, text="Location kayt7et f Blogger post metadata (ma kayban-ch f contenu). Khlliha khawya ila ma bghitich geotag. Kattsajjel f had PC.", wraplength=700).pack(anchor="w", pady=(2, 0))
         limits = ttk.Frame(outer); limits.pack(fill="x", pady=(14, 4)); ttk.Label(limits, text="Max posts this run:").pack(side="left"); ttk.Entry(limits, textvariable=self.limit_var, width=8).pack(side="left", padx=8); ttk.Label(limits, text="(start with 5–20 to test)").pack(side="left")
         interval_row = ttk.Frame(outer); interval_row.pack(fill="x", pady=(6, 2))
         ttk.Label(interval_row, text="Interval between posts:").pack(side="left")
@@ -503,6 +533,13 @@ class BloggerApp:
                 labels = [clean(x) for x in re.split(r"[,;|]", manual_label) if clean(x)]
                 labels = list(dict.fromkeys(labels))[:20]
                 body = {"kind": "blogger#post", "blog": {"id": blog["id"]}, "title": item["title"], "content": make_html(item)}
+                geo_country = self.geo_country_var.get().strip()
+                geo_city = self.geo_city_var.get().strip()
+                if geo_country or geo_city:
+                    location = geocode_blogger_location(geo_city, geo_country)
+                    if location:
+                        body["location"] = location
+                        GEO_LOCATION_FILE.write_text(json.dumps({"country": geo_country, "city": geo_city}, ensure_ascii=False, indent=2), encoding="utf-8")
                 if labels: body["labels"] = labels
                 result = SERVICE.posts().insert(blogId=blog["id"], body=body, isDraft=(mode == "draft")).execute()
                 social_notes = []; caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}\n\n{result.get('url', '')}".strip()
