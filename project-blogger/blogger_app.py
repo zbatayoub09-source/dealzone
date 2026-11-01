@@ -548,7 +548,7 @@ class BloggerApp:
         if mode == "publish":
             ok = messagebox.askyesno("Confirm public publishing", f"Ghadi tnشر max {limit} posts f kol blog مباشرة للعموم f:\n" + "\n".join(b.get("name", "Blogger") for b in selected_blogs) + "\n\nWash met2akked?")
             if not ok: return
-        self.start_btn.configure(state="disabled"); self.progress["maximum"] = min(limit, len(self.rows)); self.progress["value"] = 0
+        self.start_btn.configure(state="disabled"); self.progress["maximum"] = min(limit, len(self.rows)) * len(selected_blogs); self.progress["value"] = 0
         threading.Thread(target=self._publish_worker, args=(selected_blogs, mode, limit, interval_seconds), daemon=True).start()
 
     def _publish_worker(self, blogs, mode, limit, interval_seconds=180):
