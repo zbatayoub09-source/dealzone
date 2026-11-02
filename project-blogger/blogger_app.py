@@ -680,8 +680,8 @@ class BloggerApp:
                     post_url = str(post.get("url") or record.get("url") or "")
                     title = clean(post.get("title") or "Blogger post")
                     raw = str(post.get("content") or "")
-                    image_match = re.search(r'<img\\b[^>]*?src=["\\']([^"\\']+)["\\']', raw, re.I)
-                    video_match = re.search(r'<a\\b[^>]*?href=["\\']([^"\\']+)["\\'][^>]*>[^<]*(?:video|watch)', raw, re.I)
+                    image_match = re.search(r"<img\b[^>]*?src=['\"]([^'\"]+)['\"]", raw, re.I)
+                    video_match = re.search(r"<a\b[^>]*?href=['\"]([^'\"]+)['\"][^>]*>[^<]*(?:video|watch)", raw, re.I)
                     image = html.unescape(image_match.group(1)) if image_match else ""
                     video = html.unescape(video_match.group(1)) if video_match else ""
                     description = clean(raw)
@@ -691,7 +691,7 @@ class BloggerApp:
                     if not hashtags:
                         hashtags = make_hashtags(title)
                     item = {"title": title, "description": description, "hashtags": hashtags, "image": image, "video": video}
-                    caption = f"{title}\\n\\n{description}\\n\\n{hashtags}\\n\\n{post_url}".strip()
+                    caption = f"{title}\n\n{description}\n\n{hashtags}\n\n{post_url}".strip()
                     targets = []
                     if "Facebook" in platforms:
                         targets.extend(("Facebook", p) for p in pages)
@@ -737,7 +737,7 @@ class BloggerApp:
     def _checkpoint_share_finished(self, done, skipped, errors):
         self.share_old_btn.configure(state="normal")
         self.status_var.set(f"Checkpoint sharing finished. Success: {done}; already shared: {skipped}; errors: {errors}.")
-        messagebox.showinfo("Checkpoint sharing finished", f"Successful shares: {done}\\nAlready shared (skipped): {skipped}\\nErrors: {errors}\\n\\nProgress saved in social_share_state.json. You can retry failed items.")
+        messagebox.showinfo("Checkpoint sharing finished", f"Successful shares: {done}\nAlready shared (skipped): {skipped}\nErrors: {errors}\n\nProgress saved in social_share_state.json. You can retry failed items.")
 
     def _update_progress(self, n, total, title):
         self.progress["maximum"] = total; self.progress["value"] = n; self.status_var.set(f"{n}/{total}: {title[:100]}")
