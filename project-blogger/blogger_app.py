@@ -733,9 +733,11 @@ class BloggerApp:
                         raw = response.read(4 * 1024 * 1024).decode("utf-8", errors="replace")
                     def meta_value(*properties):
                         for prop in properties:
-                            match = re.search(r'<meta[^>]+(?:property|name)=["\\']' + re.escape(prop) + r'["\\'][^>]+content=["\\']([^"\\']*)', raw, re.I)
+                            pattern = r"""<meta[^>]+(?:property|name)=["']""" + re.escape(prop) + r"""["'][^>]+content=["']([^"']*)"""
+                            match = re.search(pattern, raw, re.I)
                             if not match:
-                                match = re.search(r'<meta[^>]+content=["\\']([^"\\']*)["\\'][^>]+(?:property|name)=["\\']' + re.escape(prop) + r'["\\']', raw, re.I)
+                                pattern = r"""<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']""" + re.escape(prop) + r"""["']"""
+                                match = re.search(pattern, raw, re.I)
                             if match:
                                 return html.unescape(match.group(1))
                         return ""
