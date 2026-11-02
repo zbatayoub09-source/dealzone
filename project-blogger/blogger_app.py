@@ -380,7 +380,7 @@ class BloggerApp:
         ttk.Combobox(interval_row, textvariable=self.interval_var, values=["0", "2", "3", "5", "10", "15", "30", "60"], width=7, state="readonly").pack(side="left", padx=8)
         ttk.Label(interval_row, text="minutes (0 = no wait; applies after each post and its social shares)").pack(side="left")
         self.start_btn = ttk.Button(outer, text="🚀  START BLOGGER", style="Primary.TButton", command=self.start_publish); self.start_btn.pack(anchor="w", pady=(16, 10))
-        self.share_old_btn = ttk.Button(outer, text="↗  SHARE ALL POSTS FROM BLOGGER CHECKPOINT", command=self.start_checkpoint_share); self.share_old_btn.pack(anchor="w", pady=(2, 8))
+        self.share_old_btn = ttk.Button(outer, text="↗  SELECT POSTS FROM CHECKPOINT & SHARE", command=self.start_checkpoint_share); self.share_old_btn.pack(anchor="w", pady=(2, 8))
         self.progress = ttk.Progressbar(outer, mode="determinate"); self.progress.pack(fill="x", pady=3); ttk.Label(outer, textvariable=self.status_var, wraplength=700).pack(anchor="w", pady=(5, 6)); ttk.Label(outer, text="Note: CSV, Google credentials, and Facebook Page token stay on this computer. Original CSV is not changed.", wraplength=700).pack(anchor="w", pady=(8, 0))
 
     def load_facebook_config(self):
@@ -612,7 +612,7 @@ class BloggerApp:
                     if mode == "publish" and self.threads_enabled_var.get():
                         try: social_notes.append(f"Threads OK: {publish_threads(item, self.threads_user_id_var.get().strip(), self.threads_token_var.get().strip(), caption)}")
                         except Exception as e: social_notes.append(f"Threads FAILED: {str(e)[:240]}"); errors += 1
-                    file_state[item["key"]] = {"post_id": result.get("id"), "url": result.get("url"), "mode": mode, "blog_id": blog_id, "blog_name": blog.get("name"), "time": time.strftime("%Y-%m-%d %H:%M:%S"), "labels": labels, "location": location_settings, "social": social_notes}
+                    file_state[item["key"]] = {"post_id": result.get("id"), "url": result.get("url"), "title": item.get("title", ""), "description": item.get("description", ""), "image": item.get("image", ""), "video": item.get("video", ""), "hashtags": item.get("hashtags", ""), "mode": mode, "blog_id": blog_id, "blog_name": blog.get("name"), "time": time.strftime("%Y-%m-%d %H:%M:%S"), "labels": labels, "location": location_settings, "social": social_notes}
                     save_state(state); done += 1; progress += 1
                     display_title = f"{blog.get('name', 'Blogger')}: {item['title']}" + (f" | {' | '.join(social_notes)}" if social_notes else "")
                     self.root.after(0, lambda n=progress, total=total_all, title=display_title: self._update_progress(n, total, title))
@@ -625,45 +625,94 @@ class BloggerApp:
         self.root.after(0, lambda: self._publish_finished(done, skipped, errors, f"Finished: {done} new posts across {len(blogs)} selected blog(s). Mode: {mode.upper()}."))
 
     def start_checkpoint_share(self):
-        if not self.connected or not SERVICE:
-            messagebox.showwarning("Connect first", "Klik Connect Blogger lwl bach nqraw l-checkpoint w njibou details dyal posts.")
-            return
         state = load_state()
         entries = []
+        seen = set()
         for state_key, posts in state.items():
             if not isinstance(posts, dict) or "::blog:" not in str(state_key):
                 continue
             for item_key, record in posts.items():
-                if isinstance(record, dict) and record.get("post_id") and record.get("blog_id") and record.get("mode") == "publish":
-                    entries.append((str(record["blog_id"]), str(record["post_id"]), record))
+                if not isinstance(record, dict) or record.get("mode") != "publish":
+                    continue
+                blog_id = str(record.get("blog_id") or "")
+                post_id = str(record.get("post_id") or "")
+                post_url = str(record.get("url") or "")
+                if not (blog_id and post_id and post_url.startswith(("http://", "https://"))):
+                    continue
+                identity = (blog_id, post_id)
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                entries.append((blog_id, post_id, record))
+
         if not entries:
-            messagebox.showinfo("Blogger checkpoint", "Ma l9itch posts public f published_state.json.")
+            messagebox.showinfo("Blogger checkpoint", "Ma l9itch posts public b URL f published_state.json.")
             return
-        platforms = []
-        if self.facebook_enabled_var.get(): platforms.append("Facebook")
-        if self.instagram_enabled_var.get(): platforms.append("Instagram")
-        if self.threads_enabled_var.get(): platforms.append("Threads")
-        if not platforms:
-            messagebox.showwarning("Social settings", "Khtar Facebook, Instagram ola Threads f social settings lwl.")
-            return
-        pages = self.selected_facebook_pages()
-        if ("Facebook" in platforms or "Instagram" in platforms) and not pages:
-            messagebox.showwarning("Social settings", "Load Facebook Pages w khtar Page wa7da 3la l-a9al.")
-            return
-        if "Threads" in platforms and (not self.threads_user_id_var.get().strip() or not self.threads_token_var.get().strip()):
-            messagebox.showwarning("Threads settings", "Dkhel Threads User ID w Access Token ola 7yed Threads.")
-            return
-        ok = messagebox.askyesno("Confirm historical sharing", f"Ghadi nراجع {len(entries)} Blogger posts public mn checkpoint.\nPlatforms: {', '.join(platforms)}\nFacebook/Instagram Pages: {len(pages)}\n\nGhadi نتجاوز غير المشاركات المسجلة كناجحة ف social_share_state.json. Posts li tpartagaw qbel b tari9a 9dima momkin y3awd ypartagaw f awel run.\n\nTأكد قبل النشر؟")
-        if not ok:
-            return
-        try:
-            self.save_facebook_config()
-        except Exception as e:
-            messagebox.showerror("Settings", str(e)); return
-        self.share_old_btn.configure(state="disabled")
-        self.progress["maximum"] = max(1, len(entries) * (len(pages) * (int("Facebook" in platforms) + int("Instagram" in platforms)) + int("Threads" in platforms)))
-        self.progress["value"] = 0
-        threading.Thread(target=self._checkpoint_share_worker, args=(entries, platforms, pages), daemon=True).start()
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Choose Blogger checkpoint posts")
+        dialog.transient(self.root)
+        dialog.geometry("850x520")
+        dialog.minsize(620, 360)
+        ttk.Label(dialog, text=f"اختار المنشورات اللي بغيتي تشارك ({len(entries)}):").pack(anchor="w", padx=12, pady=(12, 6))
+        frame = ttk.Frame(dialog)
+        frame.pack(fill="both", expand=True, padx=12, pady=4)
+        listing = tk.Listbox(frame, selectmode="extended", height=16, exportselection=False)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=listing.yview)
+        listing.configure(yscrollcommand=scrollbar.set)
+        listing.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        for blog_id, post_id, record in entries:
+            title = clean(record.get("title") or record.get("url") or post_id)
+            blog_name = clean(record.get("blog_name") or blog_id)
+            listing.insert("end", f"{blog_name} | {title[:100]} | {record.get('url', '')}")
+        listing.selection_set(0, "end")
+
+        controls = ttk.Frame(dialog)
+        controls.pack(fill="x", padx=12, pady=8)
+        def select_all():
+            listing.selection_set(0, "end")
+        def clear_selection():
+            listing.selection_clear(0, "end")
+        def share_selected():
+            indexes = list(listing.curselection())
+            if not indexes:
+                messagebox.showwarning("Checkpoint", "Khtar post wa7ed 3la l-a9al.", parent=dialog)
+                return
+            selected = [entries[i] for i in indexes]
+            platforms = []
+            if self.facebook_enabled_var.get(): platforms.append("Facebook")
+            if self.instagram_enabled_var.get(): platforms.append("Instagram")
+            if self.threads_enabled_var.get(): platforms.append("Threads")
+            if not platforms:
+                messagebox.showwarning("Social settings", "Khtar Facebook, Instagram ola Threads f social settings lwl.", parent=dialog)
+                return
+            pages = self.selected_facebook_pages()
+            if ("Facebook" in platforms or "Instagram" in platforms) and not pages:
+                messagebox.showwarning("Social settings", "Load Facebook Pages w khtar Page wa7da 3la l-a9al.", parent=dialog)
+                return
+            if "Threads" in platforms and (not self.threads_user_id_var.get().strip() or not self.threads_token_var.get().strip()):
+                messagebox.showwarning("Threads settings", "Dkhel Threads User ID w Access Token ola 7yed Threads.", parent=dialog)
+                return
+            ok = messagebox.askyesno("Confirm sharing", f"Ghadi tpartagi {len(selected)} post(s) 3la: {', '.join(platforms)}.\nFacebook/Instagram Pages: {len(pages)}\n\nPosts li سبق تشاركو بنجاح غادي يتخطاو. واش نكملو؟", parent=dialog)
+            if not ok:
+                return
+            try:
+                self.save_facebook_config()
+            except Exception as exc:
+                messagebox.showerror("Settings", str(exc), parent=dialog)
+                return
+            dialog.destroy()
+            self.share_old_btn.configure(state="disabled")
+            total = max(1, len(selected) * (len(pages) * (int("Facebook" in platforms) + int("Instagram" in platforms)) + int("Threads" in platforms)))
+            self.progress["maximum"] = total
+            self.progress["value"] = 0
+            threading.Thread(target=self._checkpoint_share_worker, args=(selected, platforms, pages), daemon=True).start()
+
+        ttk.Button(controls, text="Select all", command=select_all).pack(side="left", padx=(0, 6))
+        ttk.Button(controls, text="Clear", command=clear_selection).pack(side="left")
+        ttk.Button(controls, text="Share selected", command=share_selected).pack(side="right")
+        ttk.Button(controls, text="Cancel", command=dialog.destroy).pack(side="right", padx=6)
 
     def _checkpoint_share_worker(self, entries, platforms, pages):
         share_file = APP_DIR / "social_share_state.json"
@@ -676,22 +725,37 @@ class BloggerApp:
         try:
             for blog_id, post_id, record in entries:
                 try:
-                    post = SERVICE.posts().get(blogId=blog_id, postId=post_id).execute()
-                    post_url = str(post.get("url") or record.get("url") or "")
-                    title = clean(post.get("title") or "Blogger post")
-                    raw = str(post.get("content") or "")
-                    image_match = re.search(r"<img\b[^>]*?src=['\"]([^'\"]+)['\"]", raw, re.I)
-                    video_match = re.search(r"<a\b[^>]*?href=['\"]([^'\"]+)['\"][^>]*>[^<]*(?:video|watch)", raw, re.I)
-                    image = html.unescape(image_match.group(1)) if image_match else ""
-                    video = html.unescape(video_match.group(1)) if video_match else ""
-                    description = clean(raw)
-                    description = re.sub(r"Hashtags\\s*", "", description, flags=re.I)
-                    description = description[:1800]
-                    hashtags = " ".join(dict.fromkeys(re.findall(r"#[A-Za-z0-9_]+", raw)))[:500]
-                    if not hashtags:
-                        hashtags = make_hashtags(title)
+                    post_url = str(record.get("url") or "")
+                    if not post_url.startswith(("http://", "https://")):
+                        raise RuntimeError("Checkpoint record has no public post URL.")
+                    request = urllib.request.Request(post_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"})
+                    with urllib.request.urlopen(request, timeout=30) as response:
+                        raw = response.read(4 * 1024 * 1024).decode("utf-8", errors="replace")
+                    def meta_value(*properties):
+                        for prop in properties:
+                            match = re.search(r'<meta[^>]+(?:property|name)=["\\']' + re.escape(prop) + r'["\\'][^>]+content=["\\']([^"\\']*)', raw, re.I)
+                            if not match:
+                                match = re.search(r'<meta[^>]+content=["\\']([^"\\']*)["\\'][^>]+(?:property|name)=["\\']' + re.escape(prop) + r'["\\']', raw, re.I)
+                            if match:
+                                return html.unescape(match.group(1))
+                        return ""
+                    title = clean(meta_value("og:title", "twitter:title")) or clean(record.get("title") or "Blogger post")
+                    description = clean(meta_value("og:description", "description", "twitter:description"))
+                    if not description:
+                        body_match = re.search(r"<body\\b[^>]*>(.*?)</body>", raw, re.I | re.S)
+                        description = clean(body_match.group(1) if body_match else raw)
+                    description = re.sub(r"Hashtags\\s*", "", description, flags=re.I)[:1800]
+                    image = meta_value("og:image", "twitter:image")
+                    if not image:
+                        image_match = re.search(r"<img\\b[^>]*?src=['\\"]([^'\\"]+)['\\"]", raw, re.I)
+                        image = html.unescape(image_match.group(1)) if image_match else ""
+                    video = meta_value("og:video", "og:video:url")
+                    if not video:
+                        video_match = re.search(r"<video\\b[^>]*>.*?<source[^>]+src=['\\"]([^'\\"]+)", raw, re.I | re.S)
+                        video = html.unescape(video_match.group(1)) if video_match else ""
+                    hashtags = " ".join(dict.fromkeys(re.findall(r"#[A-Za-z0-9_]+", raw)))[:500] or make_hashtags(title)
                     item = {"title": title, "description": description, "hashtags": hashtags, "image": image, "video": video}
-                    caption = f"{title}\n\n{description}\n\n{hashtags}\n\n{post_url}".strip()
+                    caption = f"{title}\\n\\n{description}\\n\\n{hashtags}\\n\\n{post_url}".strip()
                     targets = []
                     if "Facebook" in platforms:
                         targets.extend(("Facebook", p) for p in pages)
@@ -703,7 +767,8 @@ class BloggerApp:
                         target_id = str(page.get("id")) if page else str(self.threads_user_id_var.get().strip())
                         key = f"{blog_id}:{post_id}:{platform}:{target_id}"
                         if share_state.get(key, {}).get("status") == "success":
-                            skipped += 1; progress += 1
+                            skipped += 1
+                            progress += 1
                             continue
                         try:
                             if platform == "Facebook":
@@ -712,7 +777,8 @@ class BloggerApp:
                                 req = urllib.request.Request(f"{GRAPH_BASE}/{urllib.parse.quote(target_id, safe='')}/feed", data=payload, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
                                 with urllib.request.urlopen(req, timeout=40) as response:
                                     result = json.loads(response.read().decode("utf-8"))
-                                if not result.get("id"): raise RuntimeError("Facebook ma rje3ch post ID.")
+                                if not result.get("id"):
+                                    raise RuntimeError("Facebook ma rje3ch post ID.")
                                 result_id = result["id"]
                             elif platform == "Instagram":
                                 result_id = publish_instagram(item, page, caption)
@@ -730,7 +796,7 @@ class BloggerApp:
                         time.sleep(2)
                 except Exception as exc:
                     errors += 1
-                    self.root.after(0, lambda msg=str(exc), pid=post_id: self.status_var.set(f"Blogger post {pid}: {msg[:180]}"))
+                    self.root.after(0, lambda msg=str(exc), pid=post_id: self.status_var.set(f"Checkpoint post {pid}: {msg[:180]}"))
         finally:
             self.root.after(0, lambda: self._checkpoint_share_finished(done, skipped, errors))
 
