@@ -744,9 +744,9 @@ class BloggerApp:
                     title = clean(meta_value("og:title", "twitter:title")) or clean(record.get("title") or "Blogger post")
                     description = clean(meta_value("og:description", "description", "twitter:description"))
                     if not description:
-                        body_match = re.search(r"<body\\b[^>]*>(.*?)</body>", raw, re.I | re.S)
+                        body_match = re.search(r"<body\b[^>]*>(.*?)</body>", raw, re.I | re.S)
                         description = clean(body_match.group(1) if body_match else raw)
-                    description = re.sub(r"Hashtags\\s*", "", description, flags=re.I)[:1800]
+                    description = re.sub(r"Hashtags\s*", "", description, flags=re.I)[:1800]
                     image = meta_value("og:image", "twitter:image")
                     if not image:
                         image_match = re.search(r"""<img\b[^>]*?src=['"]([^'"]+)['"]""", raw, re.I)
