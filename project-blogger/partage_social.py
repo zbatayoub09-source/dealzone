@@ -107,47 +107,65 @@ class App:
      if (self.fb.get() or self.ig.get()) and not selected: raise RuntimeError("Load w khtar Facebook Page wa7da 3la l-a9al.")
      if self.th.get() and (not self.threads_id.get().strip() or not self.threads_token.get().strip()): raise RuntimeError("Threads User ID w token daroriyin.")
      count=len(records)*(len(selected)*(int(self.fb.get())+int(self.ig.get()))+int(self.th.get()))
-     if not messagebox.askyesno("Confirm",f"Ghadi tpartaji {len(records)} post mn Blogger checkpoint.\\nTargets: {count}.\\nPosts li ma kaynach f social_share_state ghadi ytnchro. Nkmlo?"): return
+     if not messagebox.askyesno("Confirm",f"Ghadi tpartaji {len(records)} post mn Blogger checkpoint.\\nBatch: 5 posts, pause: 10 minutes.\\nTargets: {count}.\\nSuccessful shares are saved; already shared posts will be skipped. Nkmlo?"): return
      self.bar["maximum"]=max(1,count); self.bar["value"]=0
      threading.Thread(target=self.worker,args=(records,selected),daemon=True).start()
     except Exception as e: messagebox.showerror("Sharing",str(e))
  def worker(self,records,pages):
     try: state=json.loads(SHARES.read_text(encoding="utf-8")) if SHARES.exists() else {}
     except Exception: state={}
-    targets=[]
+    targets_per_record=[]
     for rec in records:
+     row_targets=[]
      for p in pages:
-      if self.fb.get(): targets.append((rec,"Facebook",p))
-      if self.ig.get(): targets.append((rec,"Instagram",p))
-     if self.th.get(): targets.append((rec,"Threads",None))
-    done=skip=errors=0
-    for n,(rec,platform,page) in enumerate(targets,1):
-     url=rec["url"]; pid=str(rec.get("post_id") or url); target=str(page.get("id")) if page else self.threads_id.get().strip()
-     key=f"{pid}:{platform}:{target}"
-     if state.get(key,{}).get("status")=="success": skip+=1
-     else:
-      try:
-       item=page_data(url,rec.get("title") or "Blogger post")
-       caption=(item["title"]+"\\n\\n"+item["description"]+"\\n\\n"+url)[:2200]
-       if platform=="Facebook":
-        result=post_api(GRAPH,f"{target}/feed",{"message":caption[:5000],"link":url,"access_token":page["access_token"]})
-       elif platform=="Instagram":
-        igid=str((page.get("instagram_business_account") or {}).get("id",""))
-        if not igid or not item["image"].startswith("https://"): raise RuntimeError("Instagram kay7taj Instagram Professional linked w og:image HTTPS.")
-        c=post_api(GRAPH,f"{igid}/media",{"image_url":item["image"],"caption":caption,"access_token":page["access_token"]})
-        result=post_api(GRAPH,f"{igid}/media_publish",{"creation_id":c["id"],"access_token":page["access_token"]})
-       else:
-        p={"access_token":self.threads_token.get().strip(),"text":caption[:500]}
-        if item["image"].startswith("https://"): p.update({"media_type":"IMAGE","image_url":item["image"]})
-        c=post_api(THREADS,f"{target}/threads",p)
-        result=post_api(THREADS,f"{target}/threads_publish",{"creation_id":c["id"],"access_token":self.threads_token.get().strip()})
-       state[key]={"status":"success","result_id":result.get("id","OK"),"url":url,"platform":platform,"target_id":target}
-       done+=1
-      except Exception as e:
-       state[key]={"status":"failed","error":str(e)[:500],"url":url,"platform":platform,"target_id":target}; errors+=1
-      SHARES.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding="utf-8")
-     self.root.after(0,lambda n=n,d=done,s=skip,e=errors,t=len(targets): (self.bar.configure(value=n),self.status.set(f"{n}/{t} | Success {d} | Skipped {s} | Errors {e}")))
-     time.sleep(2)
+      if self.fb.get(): row_targets.append(("Facebook",p))
+      if self.ig.get(): row_targets.append(("Instagram",p))
+     if self.th.get(): row_targets.append(("Threads",None))
+     targets_per_record.append(row_targets)
+    total=sum(len(x) for x in targets_per_record)
+    done=skip=errors=progress=0
+    batch_size=5
+    pause_seconds=600
+    for row_index,rec in enumerate(records,1):
+     url=rec["url"]; pid=str(rec.get("post_id") or url)
+     for platform,page in targets_per_record[row_index-1]:
+      target=str(page.get("id")) if page else self.threads_id.get().strip()
+      key=f"{pid}:{platform}:{target}"
+      if state.get(key,{}).get("status")=="success":
+       skip+=1
+      else:
+       try:
+        item=page_data(url,rec.get("title") or "Blogger post")
+        caption=(item["title"]+"\\n\\n"+item["description"]+"\\n\\n"+url)[:2200]
+        if platform=="Facebook":
+         result=post_api(GRAPH,f"{target}/feed",{"message":caption[:5000],"link":url,"access_token":page["access_token"]})
+        elif platform=="Instagram":
+         igid=str((page.get("instagram_business_account") or {}).get("id",""))
+         if not igid or not item["image"].startswith("https://"): raise RuntimeError("Instagram kay7taj Instagram Professional linked w og:image HTTPS.")
+         c=post_api(GRAPH,f"{igid}/media",{"image_url":item["image"],"caption":caption,"access_token":page["access_token"]})
+         result=post_api(GRAPH,f"{igid}/media_publish",{"creation_id":c["id"],"access_token":page["access_token"]})
+        else:
+         p={"access_token":self.threads_token.get().strip(),"text":caption[:500]}
+         if item["image"].startswith("https://"): p.update({"media_type":"IMAGE","image_url":item["image"]})
+         c=post_api(THREADS,f"{target}/threads",p)
+         result=post_api(THREADS,f"{target}/threads_publish",{"creation_id":c["id"],"access_token":self.threads_token.get().strip()})
+        state[key]={"status":"success","result_id":result.get("id","OK"),"url":url,"platform":platform,"target_id":target}
+        done+=1
+       except Exception as e:
+        state[key]={"status":"failed","error":str(e)[:500],"url":url,"platform":platform,"target_id":target}
+        errors+=1
+       SHARES.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding="utf-8")
+      progress+=1
+      n=progress; d=done; sk=skip; er=errors; t=total
+      self.root.after(0,lambda n=n,d=d,sk=sk,er=er,t=t: (self.bar.configure(value=n),self.status.set(f"{n}/{t} | Success {d} | Skipped {sk} | Errors {er}")))
+      time.sleep(2)
+     if row_index % batch_size == 0 and row_index < len(records):
+      self.root.after(0,lambda r=row_index,b=len(records): self.status.set(f"{r}/{b} posts processed. Resting 10 minutes before the next batch..."))
+      for remaining in range(pause_seconds,0,-1):
+       if remaining % 30 == 0 or remaining <= 5:
+        mins,secs=divmod(remaining,60)
+        self.root.after(0,lambda m=mins,ss=secs: self.status.set(f"Pause: {m:02d}:{ss:02d} remaining. Next batch will resume automatically."))
+       time.sleep(1)
     self.root.after(0,lambda:messagebox.showinfo("Finished",f"Success: {done}\\nAlready shared: {skip}\\nErrors: {errors}\\nDetails: social_share_state.json"))
 if __name__=="__main__":
  root=tk.Tk(); App(root); root.mainloop()
