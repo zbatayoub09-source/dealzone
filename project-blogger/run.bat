@@ -16,11 +16,30 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Download the image-fix launcher if it is missing locally.
+if not exist "blogger_app_images_fixed.py" (
+    echo Downloading missing Blogger image-fix file...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/zbatayoub09-source/dealzone/main/project-blogger/blogger_app_images_fixed.py' -OutFile 'blogger_app_images_fixed.py'"
+    if errorlevel 1 (
+        echo.
+        echo ERROR: Could not download blogger_app_images_fixed.py.
+        echo Check your internet connection and run this file again.
+        pause
+        exit /b 1
+    )
+)
+
+if not exist "blogger_app.py" (
+    echo ERROR: blogger_app.py is missing from this folder.
+    pause
+    exit /b 1
+)
+
 echo Checking Python syntax...
 py -3 -m py_compile blogger_app.py blogger_app_images_fixed.py
 if errorlevel 1 (
     echo.
-    echo ERROR: A Python syntax error was found.
+    echo ERROR: Python syntax check failed.
     echo Check the exact file and line shown above.
     pause
     exit /b 1
