@@ -749,11 +749,11 @@ class BloggerApp:
                     description = re.sub(r"Hashtags\\s*", "", description, flags=re.I)[:1800]
                     image = meta_value("og:image", "twitter:image")
                     if not image:
-                        image_match = re.search(r"<img\\b[^>]*?src=['\\"]([^'\\"]+)['\\"]", raw, re.I)
+                        image_match = re.search(r"""<img\b[^>]*?src=['"]([^'"]+)['"]""", raw, re.I)
                         image = html.unescape(image_match.group(1)) if image_match else ""
                     video = meta_value("og:video", "og:video:url")
                     if not video:
-                        video_match = re.search(r"<video\\b[^>]*>.*?<source[^>]+src=['\\"]([^'\\"]+)", raw, re.I | re.S)
+                        video_match = re.search(r"""<video\b[^>]*>.*?<source[^>]+src=['"]([^'"]+)""", raw, re.I | re.S)
                         video = html.unescape(video_match.group(1)) if video_match else ""
                     hashtags = " ".join(dict.fromkeys(re.findall(r"#[A-Za-z0-9_]+", raw)))[:500] or make_hashtags(title)
                     item = {"title": title, "description": description, "hashtags": hashtags, "image": image, "video": video}
