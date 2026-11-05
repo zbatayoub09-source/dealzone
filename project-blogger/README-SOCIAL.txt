@@ -1,31 +1,30 @@
 DEALZONE SOCIAL PUBLISHER
 
-RUN
+START
 1. Download/extract the latest repository ZIP.
-2. Open project-blogger.
-3. Double-click RUN_SOCIAL.bat. It creates a private .venv and installs the required YouTube API libraries automatically on first run.
-4. Choose your AliExpress CSV and select the platforms.
-5. For Facebook/Instagram, enter the Facebook User Access Token, click Load Facebook Pages and select the page(s).
-6. For YouTube, click "Upload / Choose token file" and select your existing youtube_token.json from your computer.
-7. Start with a limit of 1 product and click "Publish selected + Generate CSV".
+2. Open the project-blogger folder.
+3. Double-click RUN_SOCIAL.bat. It launches social_publisher.py using the project .venv when available, otherwise Python 3.
+4. Choose the AliExpress CSV and verify the column mapping, especially Title, Description, Image URL, Video URL, Promotion URL, Hashtags and Commentaire.
+5. Select the platforms and start with a small limit (for example 1-3 products) while checking the first results.
 
-YOUTUBE TOKEN
-- Choose the OAuth token JSON file, normally youtube_token.json. Do NOT select client_secret.json.
-- The file is selected locally; it is not uploaded to GitHub or any server.
-- The token must include YouTube upload permission (https://www.googleapis.com/auth/youtube.upload) and normally a refresh_token.
-- A YouTube product row must contain a direct, publicly downloadable video URL. An image URL or an ordinary product webpage is not a video file.
-- Uploaded videos are set to Public and use the product title, description, hashtags and product link.
-- If the existing token lacks upload permission or is expired without a refresh token, create a new OAuth token with YouTube upload scope.
-- Keep youtube_token.json private. It is ignored by Git.
+DIRECT PUBLISHING
+- Facebook: uses the selected Facebook Page and its Page Access Token returned by "Load Facebook Pages".
+- Instagram: works only when the selected Facebook Page is linked to an Instagram Professional account. Public HTTPS media is required.
+- Threads: requires Threads User ID and Access Token.
+- TikTok and Pinterest: this app creates ready-to-import CSV files; it does not publish directly to those platforms.
 
-CHECKPOINT / RESUMING
-Successful posts/uploads are saved in output/social_checkpoint.json. The app skips products already completed for the same platform/page or YouTube token file. Keep the checkpoint to resume; deleting it may allow duplicate posts.
+PACING AND LIMITS
+- "Max products in this run" is a cap on attempted products per selected Page/platform, not just successful posts. A failed Page will not cause the app to run through the entire CSV.
+- The default delay is 5 minutes between successful/failed publishing attempts where applicable. Keep a conservative delay and test with a small batch. Do not use repeated runs to bypass a Meta restriction.
 
-OTHER PLATFORMS
-Facebook and Instagram use the official Meta Graph API and require the correct account/page permissions. Threads requires a Threads User ID and token. TikTok and Pinterest currently produce ready-to-import CSV files rather than publishing directly.
+CHECKPOINT AND DIAGNOSTICS
+- Successful social posts are saved in output/social_checkpoint.json. Keep this file to resume without duplicate posts.
+- API failures and run summaries are appended to output/social_publisher.log. This log does not intentionally include access tokens or request parameters.
+- If one Facebook Page fails, open the log and inspect its exact API error. Check Meta Page Status, Page access and token permissions; changing API versions or tokens will not bypass a Page restriction.
+- The checkpoint and log are local runtime files and are excluded from Git.
 
 GEMINI
-Gemini AI is optional. Enter your API key in the app only; do not commit it to GitHub. AI copy may consume API quota.
+Gemini AI is optional. Enter the API key in the app only; do not commit it to GitHub. AI copy may consume API quota.
 
 SAFETY
-Tokens stay in local fields/files and are not intentionally written into checkpoints. Test with one product first. Facebook/Instagram/YouTube publishing can fail if tokens, permissions, video URLs or platform requirements are not correct. The app has not been live-tested with your personal tokens.
+Tokens are entered locally and are not intentionally written into checkpoints or logs. Test with one product first. Publishing can fail if tokens, Page permissions, media URLs, platform requirements or Meta restrictions are not satisfied.
