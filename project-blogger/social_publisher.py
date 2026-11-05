@@ -14,6 +14,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_DIR = Path(__file__).resolve().parent
+LOG_FILE = APP_DIR / "output" / "social_publisher.log"
 PLATFORMS = ["Facebook", "Instagram", "Threads", "TikTok", "Pinterest"]
 GRAPH_BASE = "https://graph.facebook.com/v26.0"
 THREADS_BASE = "https://graph.threads.net/v1.0"
@@ -165,6 +166,16 @@ def facebook_comment(item):
     if link and link not in comment:
         comment = f"{comment}\n\n{link}".strip()
     return comment
+
+
+def log_event(message):
+    """Append token-safe diagnostics without writing request parameters or tokens."""
+    try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with LOG_FILE.open("a", encoding="utf-8") as log:
+            log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} | {message}\n")
+    except OSError:
+        pass
 
 
 def save_json(path, data):
@@ -397,9 +408,10 @@ class SocialPublisher:
 
         if "Facebook" in platforms:
             for page in selected:
-                pid=str(page["id"]);done=fb_done.setdefault(pid,{});fb_page_done=0
+                pid=str(page["id"]);done=fb_done.setdefault(pid,{});fb_page_done=0;fb_page_attempts=0
                 for row,item in prepared:
-                    if fb_page_done>=limit:break
+                    # Cap attempts as well as successes to avoid hammering a failing Page.
+                    if fb_page_attempts>=limit:break
                     if item["key"] in done:
                         previous=done[item["key"]]
                         # If a comment was added/edited in the CSV after the post was published,
@@ -408,6 +420,8 @@ class SocialPublisher:
                         if isinstance(previous,dict) and comment_text and previous.get("post_id"):
                             comment_hash=hashlib.sha256(comment_text.encode("utf-8")).hexdigest()
                             if previous.get("comment_hash") != comment_hash:
+                                fb_page_attempts += 1
+                                if fb_page_attempts > limit: break
                                 try:
                                     api_post(GRAPH_BASE,f"{previous['post_id']}/comments",{"message":comment_text,"access_token":page.get("access_token","")},"Facebook comment API")
                                     previous["comment_done"]=True
@@ -415,9 +429,12 @@ class SocialPublisher:
                                     save_json(state_path,state)
                                 except Exception as e:
                                     errors.append(f"Facebook comment / {page.get('name')}: {e}")
+                                    log_event(f"Facebook COMMENT FAILED | page={page.get('name')} | page_id={pid} | product={item.get('title','')[:100]} | {e}")
+                                if interval_seconds and fb_page_attempts < limit: time.sleep(interval_seconds)
                         continue
                     caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"
                     if item["link"]:caption+=f"\n\nShop link: {item['link']}"
+                    fb_page_attempts += 1
                     try:
                         media=self.media_mode.get()
                         video=item.get("video","").strip(); image=item.get("image","").strip()
@@ -447,20 +464,26 @@ class SocialPublisher:
                             except Exception as comment_error:
                                 errors.append(f"Facebook comment / {page.get('name')} (post published, comment failed): {comment_error}")
                         if interval_seconds and fb_page_done<limit: time.sleep(interval_seconds)
-                    except Exception as e:errors.append(f"Facebook / {page.get('name')}: {e}")
+                    except Exception as e:
+                        errors.append(f"Facebook / {page.get('name')}: {e}")
+                        log_event(f"Facebook FAILED | page={page.get('name')} | page_id={pid} | product={item.get('title','')[:100]} | {e}")
+                        if interval_seconds: time.sleep(interval_seconds)
 
         if "Instagram" in platforms:
             for page in selected:
                 ig=page.get("instagram_business_account") or {};iid=str(ig.get("id", ""));
                 if not iid:errors.append(f"Instagram / {page.get('name')}: Instagram Professional ma mrboutach b Page.");continue
                 done=ig_done.setdefault(iid,{})
-                ig_page_done=0
+                ig_page_done=0;ig_page_attempts=0
                 for row,item in prepared:
+                    if ig_page_attempts>=limit:break
                     if item["key"] in done:continue
+                    ig_page_attempts += 1
                     video=item.get("video","").strip();image=item.get("image","").strip();media=self.media_mode.get()
                     ig_mode=("video" if media=="Video only" else "image" if media=="Image only" else "text" if media=="Text only" else "video" if video.startswith("https://") else "image" if image.startswith("https://") else "text")
                     if ig_mode=="text":
-                        errors.append(f"Instagram / {page.get('name')}: public HTTPS image ola video URL khas.");continue
+                        msg=f"Instagram / {page.get('name')}: public HTTPS image ola video URL khas."
+                        errors.append(msg);log_event(f"Instagram SKIPPED | page={page.get('name')} | product={item.get('title','')[:100]} | {msg}");continue
                     # Instagram captions should not contain the generic links-page CTA.
                     caption=f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}"[:2200]
                     try:
@@ -485,17 +508,26 @@ class SocialPublisher:
                         done[item["key"]]=1;counts["Instagram"]+=1;ig_page_done+=1;save_json(state_path,state)
                         if interval_seconds and ig_page_done<limit: time.sleep(interval_seconds)
                         if ig_page_done>=limit:break
-                    except Exception as e:errors.append(f"Instagram / {page.get('name')}: {e}")
+                    except Exception as e:
+                        errors.append(f"Instagram / {page.get('name')}: {e}")
+                        log_event(f"Instagram FAILED | page={page.get('name')} | page_id={page.get('id')} | product={item.get('title','')[:100]} | {e}")
+                        if interval_seconds: time.sleep(interval_seconds)
 
         if "Threads" in platforms:
             uid=self.threads_user_id.get().strip();token=self.threads_token.get().strip();done=th_done.setdefault(uid,{});thread_page_done=0
+            thread_attempts=0
             for row,item in prepared:
+                if thread_attempts>=limit:break
                 if item["key"] in done:continue
+                thread_attempts += 1
                 try:
                     done[item["key"]]=publish_threads(item,uid,token);counts["Threads"]+=1;thread_page_done+=1;save_json(state_path,state)
                     if interval_seconds and thread_page_done<limit: time.sleep(interval_seconds)
                     if thread_page_done>=limit:break
-                except Exception as e:errors.append(f"Threads: {e}")
+                except Exception as e:
+                    errors.append(f"Threads: {e}")
+                    log_event(f"Threads FAILED | user_id={uid} | product={item.get('title','')[:100]} | {e}")
+                    if interval_seconds: time.sleep(interval_seconds)
 
         # Platforms without direct publishing support produce ready CSV files.
         for p in platforms:
@@ -508,7 +540,8 @@ class SocialPublisher:
         self.status.set("Done: " + " | ".join(f"{p} {counts[p]}" for p in platforms))
         msg=" | ".join(f"{p}: {counts[p]}" for p in platforms)
         if errors:msg += "\n\nErrors:\n"+"\n".join(errors[:8])
-        messagebox.showinfo("DealZone - Done",msg+f"\n\nCheckpoint: {state_path}")
+        log_event(f"RUN FINISHED | platforms={','.join(platforms)} | counts={counts} | errors={len(errors)}")
+        messagebox.showinfo("DealZone - Done",msg+f"\n\nCheckpoint: {state_path}\nLog: {LOG_FILE}")
 
 
 def main():
