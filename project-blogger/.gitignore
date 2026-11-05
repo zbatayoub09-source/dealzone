@@ -7,3 +7,4 @@ __pycache__/
 youtube_token.json
 youtube_checkpoint.json
 social_checkpoint.json
+*.log
