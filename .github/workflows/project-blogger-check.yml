@@ -1,0 +1,25 @@
+name: Project Blogger Python checks
+
+on:
+  push:
+    paths:
+      - "project-blogger/**"
+      - ".github/workflows/project-blogger-check.yml"
+  pull_request:
+    paths:
+      - "project-blogger/**"
+      - ".github/workflows/project-blogger-check.yml"
+  workflow_dispatch:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile all project-blogger Python files
+        run: python -m compileall -q project-blogger
