@@ -450,19 +450,59 @@ class BloggerApp:
         if not hasattr(self, "facebook_pages_list"): return []
         return [self.facebook_pages[i] for i in self.facebook_pages_list.curselection() if 0 <= i < len(self.facebook_pages)]
 
-    def share_to_facebook(self, item, post_url):
+    def run_social_target(self, blog_id, post_id, platform, target_id, action):
+        """Run one social target and persist its result immediately for safe resume."""
+        share_file = APP_DIR / "social_share_state.json"
+        try:
+            state = json.loads(share_file.read_text(encoding="utf-8")) if share_file.exists() else {}
+            if not isinstance(state, dict): state = {}
+        except Exception:
+            state = {}
+        key = f"{blog_id}:{post_id}:{platform}:{target_id}"
+        previous = state.get(key, {})
+        if isinstance(previous, dict) and previous.get("status") == "success":
+            return str(previous.get("result_id") or "already shared")
+        try:
+            result_id = action()
+            if not result_id:
+                raise RuntimeError(platform + " did not return a result ID.")
+            state[key] = {"status": "success", "result_id": str(result_id), "blog_id": str(blog_id), "post_id": str(post_id), "platform": platform, "target_id": str(target_id), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+        except Exception as exc:
+            state[key] = {"status": "failed", "error": str(exc)[:500], "blog_id": str(blog_id), "post_id": str(post_id), "platform": platform, "target_id": str(target_id), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+            temp = share_file.with_suffix(".tmp")
+            temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+            temp.replace(share_file)
+            raise
+        temp = share_file.with_suffix(".tmp")
+        temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp.replace(share_file)
+        return str(result_id)
+
+    def share_to_facebook(self, item, post_url, blog_id=None, post_id=None):
         if not self.facebook_enabled_var.get(): return "disabled"
         pages = self.selected_facebook_pages()
         if not pages: raise ValueError("Facebook sharing enabled, but no Pages selected. Load Facebook Pages and select at least one.")
-        message = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}".strip(); posted, errors = [], []
+        message = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}".strip()
+        posted, errors = [], []
         for page in pages:
-            page_id = str(page.get("id", "")); page_token = str(page.get("access_token", "")); payload = urllib.parse.urlencode({"message": message[:5000], "link": post_url, "access_token": page_token}).encode("utf-8")
-            request = urllib.request.Request(f"https://graph.facebook.com/v26.0/{urllib.parse.quote(page_id, safe='')}/feed", data=payload, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+            page_id = str(page.get("id", ""))
+            page_token = str(page.get("access_token", ""))
+            def send():
+                payload = urllib.parse.urlencode({"message": message[:5000], "link": post_url, "access_token": page_token}).encode("utf-8")
+                request = urllib.request.Request(f"https://graph.facebook.com/v26.0/{urllib.parse.quote(page_id, safe='')}/feed", data=payload, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+                if not result.get("id"):
+                    raise RuntimeError("Facebook did not return a post ID.")
+                return result["id"]
             try:
-                with urllib.request.urlopen(request, timeout=30) as response: result = json.loads(response.read().decode("utf-8"))
-                if result.get("id"): posted.append(f"{page.get('name', page_id)}: {result['id']}")
-                else: errors.append(f"{page.get('name', page_id)}: Facebook did not return a post ID")
-            except Exception as e: errors.append(f"{page.get('name', page_id)}: {str(e)[:240]}")
+                if blog_id and post_id:
+                    result_id = self.run_social_target(blog_id, post_id, "Facebook", page_id, send)
+                else:
+                    result_id = send()
+                posted.append(f"{page.get('name', page_id)}: {result_id}")
+            except Exception as exc:
+                errors.append(f"{page.get('name', page_id)}: {str(exc)[:240]}")
         if errors: raise RuntimeError("Posted: " + "; ".join(posted) + " | Failed: " + "; ".join(errors))
         return "; ".join(posted)
 
@@ -621,17 +661,23 @@ class BloggerApp:
                     social_notes = []
                     caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}\n\n{result.get('url', '')}".strip()
                     if mode == "publish" and self.facebook_enabled_var.get():
-                        try: fb_result = self.share_to_facebook(item, result.get("url", "")); social_notes.append(f"Facebook OK: {fb_result}")
+                        try: fb_result = self.share_to_facebook(item, result.get("url", ""), blog_id, result.get("id")); social_notes.append(f"Facebook OK: {fb_result}")
                         except Exception as social_error: social_notes.append(f"Facebook FAILED: {str(social_error)[:260]}"); errors += 1
                     if mode == "publish" and self.instagram_enabled_var.get():
                         ig_ok, ig_errors = [], []
                         for page in self.selected_facebook_pages():
-                            try: ig_ok.append(f"{page.get('name', page.get('id'))}: {publish_instagram(item, page, caption)}")
+                            try:
+                                page_id = str(page.get("id", ""))
+                                ig_id = self.run_social_target(blog_id, result.get("id"), "Instagram", page_id, lambda p=page: publish_instagram(item, p, caption))
+                                ig_ok.append(f"{page.get('name', page.get('id'))}: {ig_id}")
                             except Exception as e: ig_errors.append(f"{page.get('name', page.get('id'))}: {str(e)[:240]}")
                         if ig_ok: social_notes.append("Instagram OK: " + "; ".join(ig_ok))
                         if ig_errors: social_notes.append("Instagram FAILED: " + "; ".join(ig_errors)); errors += len(ig_errors)
                     if mode == "publish" and self.threads_enabled_var.get():
-                        try: social_notes.append(f"Threads OK: {publish_threads(item, self.threads_user_id_var.get().strip(), self.threads_token_var.get().strip(), caption)}")
+                        try:
+                            threads_id = self.threads_user_id_var.get().strip()
+                            result_id = self.run_social_target(blog_id, result.get("id"), "Threads", threads_id, lambda: publish_threads(item, threads_id, self.threads_token_var.get().strip(), caption))
+                            social_notes.append(f"Threads OK: {result_id}")
                         except Exception as e: social_notes.append(f"Threads FAILED: {str(e)[:240]}"); errors += 1
                     saved_record["social"] = social_notes
                     saved_record["checkpoint_status"] = "complete" if not any("FAILED:" in note for note in social_notes) else "social_retry_needed"
