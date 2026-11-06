@@ -380,7 +380,8 @@ class BloggerApp:
         ttk.Combobox(interval_row, textvariable=self.interval_var, values=["0", "2", "3", "5", "10", "15", "30", "60"], width=7, state="readonly").pack(side="left", padx=8)
         ttk.Label(interval_row, text="minutes (0 = no wait; applies after each post and its social shares)").pack(side="left")
         self.start_btn = ttk.Button(outer, text="🚀  START BLOGGER", style="Primary.TButton", command=self.start_publish); self.start_btn.pack(anchor="w", pady=(16, 10))
-        self.share_old_btn = ttk.Button(outer, text="↗  SELECT POSTS FROM CHECKPOINT & SHARE", command=self.start_checkpoint_share); self.share_old_btn.pack(anchor="w", pady=(2, 8))
+        self.share_old_btn = ttk.Button(outer, text="↗  RESUME / SELECT POSTS FROM CHECKPOINT & SHARE", command=self.start_checkpoint_share); self.share_old_btn.pack(anchor="w", pady=(2, 4))
+        ttk.Label(outer, text="Resume after interruption: START BLOGGER skips saved posts; use the checkpoint sharing button to retry unfinished shares. Successful platform/Page shares are skipped automatically.", wraplength=700).pack(anchor="w", pady=(0, 6))
         self.progress = ttk.Progressbar(outer, mode="determinate"); self.progress.pack(fill="x", pady=3); ttk.Label(outer, textvariable=self.status_var, wraplength=700).pack(anchor="w", pady=(5, 6)); ttk.Label(outer, text="Note: CSV, Google credentials, and Facebook Page token stay on this computer. Original CSV is not changed.", wraplength=700).pack(anchor="w", pady=(8, 0))
 
     def load_facebook_config(self):
