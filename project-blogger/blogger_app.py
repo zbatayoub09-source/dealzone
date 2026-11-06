@@ -597,6 +597,27 @@ class BloggerApp:
                     if resolved_location: body["location"] = resolved_location
                     if labels: body["labels"] = labels
                     result = SERVICE.posts().insert(blogId=blog_id, body=body, isDraft=(mode == "draft")).execute()
+                    # Save the Blogger post immediately. If social sharing or the app is
+                    # interrupted, the next run will skip this post instead of duplicating it.
+                    saved_record = {
+                        "post_id": result.get("id"),
+                        "url": result.get("url"),
+                        "title": item.get("title", ""),
+                        "description": item.get("description", ""),
+                        "image": item.get("image", ""),
+                        "video": item.get("video", ""),
+                        "hashtags": item.get("hashtags", ""),
+                        "mode": mode,
+                        "blog_id": blog_id,
+                        "blog_name": blog.get("name"),
+                        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "labels": labels,
+                        "location": location_settings,
+                        "social": [],
+                        "checkpoint_status": "blogger_saved"
+                    }
+                    file_state[item["key"]] = saved_record
+                    save_state(state)
                     social_notes = []
                     caption = f"{item['title']}\n\n{item['description']}\n\n{item['hashtags']}\n\n{result.get('url', '')}".strip()
                     if mode == "publish" and self.facebook_enabled_var.get():
@@ -612,7 +633,10 @@ class BloggerApp:
                     if mode == "publish" and self.threads_enabled_var.get():
                         try: social_notes.append(f"Threads OK: {publish_threads(item, self.threads_user_id_var.get().strip(), self.threads_token_var.get().strip(), caption)}")
                         except Exception as e: social_notes.append(f"Threads FAILED: {str(e)[:240]}"); errors += 1
-                    file_state[item["key"]] = {"post_id": result.get("id"), "url": result.get("url"), "title": item.get("title", ""), "description": item.get("description", ""), "image": item.get("image", ""), "video": item.get("video", ""), "hashtags": item.get("hashtags", ""), "mode": mode, "blog_id": blog_id, "blog_name": blog.get("name"), "time": time.strftime("%Y-%m-%d %H:%M:%S"), "labels": labels, "location": location_settings, "social": social_notes}
+                    saved_record["social"] = social_notes
+                    saved_record["checkpoint_status"] = "complete" if not any("FAILED:" in note for note in social_notes) else "social_retry_needed"
+                    saved_record["social_updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    file_state[item["key"]] = saved_record
                     save_state(state); done += 1; progress += 1
                     display_title = f"{blog.get('name', 'Blogger')}: {item['title']}" + (f" | {' | '.join(social_notes)}" if social_notes else "")
                     self.root.after(0, lambda n=progress, total=total_all, title=display_title: self._update_progress(n, total, title))
