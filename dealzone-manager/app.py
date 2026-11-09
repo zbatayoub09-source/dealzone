@@ -1,5 +1,5 @@
 from flask import Flask, request, redirect, url_for, render_template_string, flash, send_file
-import sqlite3, csv, io, os, webbrowser, threading, time
+import sqlite3, csv, io, os, webbrowser, threading, time, json, re
 from datetime import datetime
 from pathlib import Path
 
@@ -49,7 +49,7 @@ h2{margin-top:8px}.muted{color:#718096;font-size:12px}.flash{background:#fff1d6;
 .profit{color:#13834d;font-weight:bold}.danger{background:#b83d48}.actions{display:flex;gap:6px;flex-wrap:wrap}
 img.thumb{width:48px;height:48px;object-fit:cover;border-radius:7px} .scroll{overflow:auto}
 </style></head><body><header><b>DealZone Manager</b><span>لوحة تسيير المتجر — محلياً على حاسوبك</span></header>
-<div class="wrap"><nav><a class="btn" href="/">الرئيسية</a><a class="btn secondary" href="/products">المنتجات</a><a class="btn secondary" href="/orders">الطلبات</a><a class="btn secondary" href="/import">استيراد CSV</a><a class="btn secondary" href="/export">تصدير CSV</a></nav>
+<div class="wrap"><nav><a class="btn" href="/">الرئيسية</a><a class="btn secondary" href="/products">المنتجات</a><a class="btn secondary" href="/orders">الطلبات</a><a class="btn secondary" href="/import">استيراد CSV</a><a class="btn secondary" href="/export">تصدير CSV</a><a class="btn secondary" href="/settings">إعدادات المتجر</a><a class="btn secondary" href="/generate">توليد المتجر</a></nav>
 {% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
 {{body|safe}}</div></body></html>
 """
@@ -206,6 +206,105 @@ def export_csv():
         w.writerow({"ProductId":r["product_id"],"Product Desc":r["title"],"Image Url":r["image_url"],"BuyPrice":r["buy_price"],"SellPrice":r["sell_price"],"ShippingCost":r["shipping_cost"],"Profit":r["sell_price"]-r["buy_price"]-r["shipping_cost"],"SupplierUrl":r["supplier_url"],"Category":r["category"]})
     data=io.BytesIO(output.getvalue().encode("utf-8-sig")); data.seek(0)
     return send_file(data,mimetype="text/csv",as_attachment=True,download_name="dealzone_products.csv")
+
+
+SETTINGS_FILE = BASE / "store_settings.json"
+DEFAULT_SETTINGS = {
+    "store_name": "DealZone",
+    "store_description": "Smart finds. Better deals.",
+    "accent": "#ff4f4f",
+    "background": "#f7f8fa",
+    "text_color": "#171923",
+    "currency": "MAD",
+    "show_facebook": True,
+    "show_whatsapp": True,
+    "show_pinterest": True,
+    "show_x": True,
+    "show_telegram": True
+}
+
+def load_settings():
+    try:
+        data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        return {**DEFAULT_SETTINGS, **data}
+    except Exception:
+        return DEFAULT_SETTINGS.copy()
+
+@app.route("/settings", methods=["GET", "POST"])
+def store_settings():
+    cfg = load_settings()
+    if request.method == "POST":
+        f = request.form
+        cfg.update({
+            "store_name": (f.get("store_name") or "DealZone").strip()[:80],
+            "store_description": (f.get("store_description") or "").strip()[:300],
+            "accent": f.get("accent", "#ff4f4f"),
+            "background": f.get("background", "#f7f8fa"),
+            "text_color": f.get("text_color", "#171923"),
+            "currency": f.get("currency", "MAD"),
+            "show_facebook": f.get("show_facebook") == "on",
+            "show_whatsapp": f.get("show_whatsapp") == "on",
+            "show_pinterest": f.get("show_pinterest") == "on",
+            "show_x": f.get("show_x") == "on",
+            "show_telegram": f.get("show_telegram") == "on"
+        })
+        for key in ("accent", "background", "text_color"):
+            if not re.fullmatch(r"#[0-9a-fA-F]{6}", cfg[key]):
+                cfg[key] = DEFAULT_SETTINGS[key]
+        SETTINGS_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        flash("تحفظات إعدادات المتجر. استعمل «توليد المتجر» باش تطبقها على النسخة المولدة.")
+        return redirect(url_for("store_settings"))
+    body = """<h2>إعدادات المتجر والتصميم</h2><form method="post" class="card">
+    <div class="formgrid">
+    <div><label>اسم المتجر</label><input name="store_name" value="{{c.store_name}}"></div>
+    <div><label>وصف المتجر</label><input name="store_description" value="{{c.store_description}}"></div>
+    <div><label>العملة المعروضة</label><select name="currency"><option value="MAD" {% if c.currency=='MAD' %}selected{% endif %}>MAD</option><option value="USD" {% if c.currency=='USD' %}selected{% endif %}>USD</option><option value="EUR" {% if c.currency=='EUR' %}selected{% endif %}>EUR</option></select></div>
+    <div><label>اللون الرئيسي</label><input type="color" name="accent" value="{{c.accent}}"></div>
+    <div><label>لون الخلفية</label><input type="color" name="background" value="{{c.background}}"></div>
+    <div><label>لون النص</label><input type="color" name="text_color" value="{{c.text_color}}"></div></div>
+    <h3>أزرار المشاركة في صفحات المنتجات</h3>
+    {% for key,label in channels %}<label style="display:block;margin:9px 0"><input style="width:auto;margin:0 8px" type="checkbox" name="{{key}}" {% if c[key] %}checked{% endif %}> {{label}}</label>{% endfor %}
+    <button>حفظ الإعدادات</button></form>
+    <p class="muted">هذه الإعدادات تطبق على المتجر الذي يتم توليده. ربط النشر التلقائي بحسابات Meta وBlogger يحتاج صلاحيات وتوكنات رسمية.</p>"""
+    channels=[("show_facebook","Facebook"),("show_whatsapp","WhatsApp"),("show_pinterest","Pinterest"),("show_x","X"),("show_telegram","Telegram")]
+    return page(body,c=cfg,channels=channels)
+
+@app.route("/generate", methods=["GET", "POST"])
+def generate_store():
+    if request.method == "POST":
+        cfg = load_settings()
+        out = BASE / "storefront"
+        out.mkdir(exist_ok=True)
+        with db() as con:
+            rows = con.execute("SELECT * FROM products WHERE active=1 ORDER BY id DESC").fetchall()
+        def esc_html(v):
+            import html
+            return html.escape(str(v or ""), quote=True)
+        cards = []
+        for p in rows:
+            pid = str(p["id"])
+            image = esc_html(p["image_url"])
+            title = esc_html(p["title"])
+            desc = esc_html(p["description"])
+            price = f'{p["sell_price"]:.2f} {esc_html(cfg["currency"])}'
+            share_url = f'products/{pid}.html'
+            cards.append(f"""<article class="product"><a href="{share_url}"><img src="{image}" alt="{title}" loading="lazy"></a><h2>{title}</h2><p>{desc[:220]}</p><strong>{price}</strong><a class="buy" href="{share_url}">التفاصيل</a></article>""")
+            buttons = []
+            encoded = share_url
+            if cfg["show_facebook"]: buttons.append(f'<a href="https://www.facebook.com/sharer/sharer.php?u={encoded}">Facebook</a>')
+            if cfg["show_whatsapp"]: buttons.append(f'<a href="https://wa.me/?text={title}%20{encoded}">WhatsApp</a>')
+            if cfg["show_pinterest"]: buttons.append(f'<a href="https://pinterest.com/pin/create/button/?url={encoded}&media={image}&description={title}">Pinterest</a>')
+            if cfg["show_x"]: buttons.append(f'<a href="https://twitter.com/intent/tweet?url={encoded}&text={title}">X</a>')
+            if cfg["show_telegram"]: buttons.append(f'<a href="https://t.me/share/url?url={encoded}&text={title}">Telegram</a>')
+            detail=f"""<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} | {esc_html(cfg['store_name'])}</title><style>body{{font-family:Arial;background:{cfg['background']};color:{cfg['text_color']};max-width:900px;margin:30px auto;padding:15px}}img{{max-width:100%;max-height:520px;object-fit:contain}}.buy{{display:inline-block;background:{cfg['accent']};color:white;padding:12px 22px;border-radius:9px}}a{{margin:5px}}</style><a href="../index.html">الرئيسية</a><h1>{title}</h1><img src="{image}"><h2>{price}</h2><p>{desc}</p><h3>شارك المنتج</h3>{' '.join(buttons)}</html>"""
+            (out / "products").mkdir(exist_ok=True)
+            (out / "products" / f"{pid}.html").write_text(detail,encoding="utf-8")
+        html_page=f"""<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc_html(cfg['store_name'])}</title><meta name="description" content="{esc_html(cfg['store_description'])}"><style>*{{box-sizing:border-box}}body{{font-family:Arial;margin:0;background:{cfg['background']};color:{cfg['text_color']}}}header{{padding:28px;text-align:center;background:white}}main{{max-width:1200px;margin:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px}}.product{{background:white;border-radius:15px;padding:15px;box-shadow:0 3px 15px #0001}}img{{width:100%;height:190px;object-fit:contain}}.buy{{display:block;text-align:center;background:{cfg['accent']};color:white;padding:11px;border-radius:8px;text-decoration:none;margin-top:12px}}p{{line-height:1.6}}</style></head><body><header><h1>{esc_html(cfg['store_name'])}</h1><p>{esc_html(cfg['store_description'])}</p></header><main>{''.join(cards) or '<p>لا توجد منتجات مفعلة بعد.</p>'}</main></body></html>"""
+        (out / "index.html").write_text(html_page,encoding="utf-8")
+        flash(f"تولد المتجر بنجاح: {len(rows)} منتج. الملفات داخل dealzone-manager/storefront")
+        return redirect(url_for("generate_store"))
+    body="""<h2>مولّد متجر DealZone</h2><div class="card"><p>كيصنع واجهة متجر وصفحات تفاصيل المنتجات انطلاقاً من المنتجات الموجودة في قاعدة بيانات اللوحة، وكيطبق الألوان وإعدادات المشاركة.</p><p>الملفات المولدة كتكون داخل مجلد <b>storefront</b> بجانب app.py.</p><form method="post"><button>توليد / تحديث المتجر الآن</button></form></div><p class="muted">التوليد محلي حالياً؛ النشر على GitHub Pages أو مزامنة Blogger يحتاج إعداد نشر منفصل وصلاحيات الحساب.</p>"""
+    return page(body)
 
 if __name__ == "__main__":
     init_db()
