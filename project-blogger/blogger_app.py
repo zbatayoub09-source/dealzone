@@ -10,6 +10,7 @@ import urllib.parse
 import urllib.request
 import urllib.error
 from pathlib import Path
+from html.parser import HTMLParser
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -109,6 +110,81 @@ def clean(value):
     value = str(value or "")
     value = re.sub(r"<[^>]*>", " ", value)
     return re.sub(r"\s+", " ", html.unescape(value)).strip()
+
+class BloggerPostHTMLParser(HTMLParser):
+    """Extract post-body text and media without theme, scripts, ads or schema."""
+    TARGET_CLASSES = {"post-body", "post-body-container", "post-content", "entry-content", "article-body"}
+    SKIP_TAGS = {"script", "style", "noscript", "svg", "iframe", "nav", "footer", "header", "aside"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.meta, self.title_parts, self.content_parts = {}, [], []
+        self.images, self.videos = [], []
+        self.skip_depth = 0
+        self.title_depth = 0
+        self.content_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "meta":
+            key = (attrs.get("property") or attrs.get("name") or "").lower()
+            if key and attrs.get("content"):
+                self.meta[key] = attrs["content"]
+        if tag in self.SKIP_TAGS:
+            self.skip_depth += 1
+            return
+        if self.skip_depth:
+            return
+        if tag == "title":
+            self.title_depth += 1
+        classes = set((attrs.get("class") or "").lower().split())
+        if not self.content_depth and (classes & self.TARGET_CLASSES or attrs.get("itemprop") == "articleBody"):
+            self.content_depth = 1
+        elif self.content_depth:
+            self.content_depth += 1
+        if self.content_depth:
+            if tag == "img" and attrs.get("src"):
+                self.images.append(attrs["src"])
+            if tag in {"video", "source"} and attrs.get("src"):
+                self.videos.append(attrs["src"])
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP_TAGS:
+            self.skip_depth = max(0, self.skip_depth - 1)
+            return
+        if self.skip_depth:
+            return
+        if tag == "title" and self.title_depth:
+            self.title_depth -= 1
+        if self.content_depth:
+            self.content_depth -= 1
+
+    def handle_data(self, data):
+        if self.skip_depth:
+            return
+        value = data.strip()
+        if not value:
+            return
+        if self.title_depth:
+            self.title_parts.append(value)
+        if self.content_depth:
+            self.content_parts.append(value)
+
+
+def extract_blogger_post(raw_html, fallback_title="", fallback_description=""):
+    parser = BloggerPostHTMLParser()
+    try:
+        parser.feed(raw_html)
+        parser.close()
+    except Exception:
+        pass
+    meta = parser.meta
+    title = clean(meta.get("og:title") or meta.get("twitter:title") or " ".join(parser.title_parts) or fallback_title or "Blogger post")
+    description = clean(" ".join(parser.content_parts) or fallback_description)
+    description = re.sub(r"Hashtags\s*", "", description, flags=re.I)[:1800]
+    image = meta.get("og:image") or meta.get("twitter:image") or (parser.images[0] if parser.images else "")
+    video = meta.get("og:video") or meta.get("og:video:url") or (parser.videos[0] if parser.videos else "")
+    return {"title": title[:300], "description": description, "image": html.unescape(image), "video": html.unescape(video)}
 
 def get_value(row, names):
     lowered = {str(k).strip().lower(): k for k in row.keys() if k is not None}
@@ -802,33 +878,14 @@ class BloggerApp:
                     request = urllib.request.Request(post_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"})
                     with urllib.request.urlopen(request, timeout=30) as response:
                         raw = response.read(4 * 1024 * 1024).decode("utf-8", errors="replace")
-                    def meta_value(*properties):
-                        for prop in properties:
-                            pattern = r"""<meta[^>]+(?:property|name)=["']""" + re.escape(prop) + r"""["'][^>]+content=["']([^"']*)"""
-                            match = re.search(pattern, raw, re.I)
-                            if not match:
-                                pattern = r"""<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']""" + re.escape(prop) + r"""["']"""
-                                match = re.search(pattern, raw, re.I)
-                            if match:
-                                return html.unescape(match.group(1))
-                        return ""
-                    title = clean(meta_value("og:title", "twitter:title")) or clean(record.get("title") or "Blogger post")
-                    description = clean(meta_value("og:description", "description", "twitter:description"))
-                    if not description:
-                        body_match = re.search(r"<body\b[^>]*>(.*?)</body>", raw, re.I | re.S)
-                        description = clean(body_match.group(1) if body_match else raw)
-                    description = re.sub(r"Hashtags\s*", "", description, flags=re.I)[:1800]
-                    image = meta_value("og:image", "twitter:image")
-                    if not image:
-                        image_match = re.search(r"""<img\b[^>]*?src=['"]([^'"]+)['"]""", raw, re.I)
-                        image = html.unescape(image_match.group(1)) if image_match else ""
-                    video = meta_value("og:video", "og:video:url")
-                    if not video:
-                        video_match = re.search(r"""<video\b[^>]*>.*?<source[^>]+src=['"]([^'"]+)""", raw, re.I | re.S)
-                        video = html.unescape(video_match.group(1)) if video_match else ""
-                    hashtags = " ".join(dict.fromkeys(re.findall(r"#[A-Za-z0-9_]+", raw)))[:500] or make_hashtags(title)
+                    extracted = extract_blogger_post(raw, record.get("title", ""), record.get("description", ""))
+                    title = extracted["title"] or clean(record.get("title") or "Blogger post")
+                    description = extracted["description"]
+                    image = extracted["image"]
+                    video = extracted["video"]
+                    hashtags = " ".join(dict.fromkeys(re.findall(r"#[A-Za-z0-9_]+", description)))[:500] or make_hashtags(title, record.get("hashtags", ""))
                     item = {"title": title, "description": description, "hashtags": hashtags, "image": image, "video": video}
-                    caption = f"{title}\\n\\n{description}\\n\\n{hashtags}\\n\\n{post_url}".strip()
+                    caption = f"{title}\n\n{description}\n\n{hashtags}\n\n{post_url}".strip()
                     targets = []
                     if "Facebook" in platforms:
                         targets.extend(("Facebook", p) for p in pages)
