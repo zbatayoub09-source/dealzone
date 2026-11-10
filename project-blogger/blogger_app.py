@@ -115,6 +115,7 @@ class BloggerPostHTMLParser(HTMLParser):
     """Extract post-body text and media without theme, scripts, ads or schema."""
     TARGET_CLASSES = {"post-body", "post-body-container", "post-content", "entry-content", "article-body"}
     SKIP_TAGS = {"script", "style", "noscript", "svg", "iframe", "nav", "footer", "header", "aside"}
+    VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -140,7 +141,7 @@ class BloggerPostHTMLParser(HTMLParser):
         classes = set((attrs.get("class") or "").lower().split())
         if not self.content_depth and (classes & self.TARGET_CLASSES or attrs.get("itemprop") == "articleBody"):
             self.content_depth = 1
-        elif self.content_depth:
+        elif self.content_depth and tag not in self.VOID_TAGS:
             self.content_depth += 1
         if self.content_depth:
             if tag == "img" and attrs.get("src"):
