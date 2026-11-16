@@ -11,7 +11,7 @@ FIELDS = [
     ("category", "التصنيف"), ("description", "الوصف"),
     ("bio", "نبذة قصيرة"), ("website", "الموقع الإلكتروني"),
     ("email", "البريد الإلكتروني"), ("phone", "الهاتف"),
-    ("city", "المدينة"), ("language", "اللغة"),
+    ("city", "المدينة"), ("language", "اللغة"), ("profile_image", "صورة البروفايل (مسار الصورة)"),
 ]
 
 def slugify(value):
@@ -86,7 +86,8 @@ class App:
           "bio":["bio","short description","short bio","نبذة","نبذة قصيرة"],
           "website":["website","url","site","الموقع"],"email":["email","البريد"],
           "phone":["phone","telephone","الهاتف"],"city":["city","location","المدينة"],
-          "language":["language","lang","اللغة"]}
+          "language":["language","lang","اللغة"],
+          "profile_image":["profile_image","profile image","profile_photo","image","image_path","صورة البروفايل","الصورة"]}
         lower={h.lower():h for h in self.headers}
         for key,names in aliases.items():
             for name in names:
@@ -141,7 +142,18 @@ class App:
         (folder/"page_info.json").write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
         text=(f"اسم الصفحة: {name}\nاسم المستخدم المقترح: {data.get('username','')}\nالتصنيف: {data.get('category','')}\n\nالوصف:\n{data.get('description','')}\n\nالنبذة:\n{data.get('bio','')}\nالموقع: {data.get('website','')}\nالبريد: {data.get('email','')}\nالهاتف: {data.get('phone','')}\nالمدينة: {data.get('city','')}\nاللغة: {data.get('language','')}\n")
         (folder/"about.txt").write_text(text,encoding="utf-8")
-        if self.profile and self.profile.exists():shutil.copy2(self.profile,folder/("profile"+self.profile.suffix.lower()))
+        image_value = str(data.get("profile_image", "")).strip()
+        image_source = None
+        if image_value:
+            candidate = Path(image_value).expanduser()
+            if not candidate.is_absolute() and self.csv_path:
+                candidate = self.csv_path.parent / candidate
+            if candidate.exists() and candidate.is_file():
+                image_source = candidate
+        if image_source:
+            shutil.copy2(image_source, folder / ("profile" + image_source.suffix.lower()))
+        elif self.profile and self.profile.exists():
+            shutil.copy2(self.profile, folder / ("profile" + self.profile.suffix.lower()))
         if self.cover and self.cover.exists():shutil.copy2(self.cover,folder/("cover"+self.cover.suffix.lower()))
 
     def save_current(self):
