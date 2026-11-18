@@ -105,7 +105,7 @@ def read_csv_headers(path):
         sample = handle.read(8192)
         handle.seek(0)
         try:
-            dialect = csv.Sniffer().sniff(sample, delimiters=",;\\t")
+            dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
         except csv.Error:
             dialect = csv.excel
         headers = next(csv.reader(handle, dialect), [])
@@ -126,7 +126,7 @@ def load_csv(path, column_map):
         sample = handle.read(8192)
         handle.seek(0)
         try:
-            dialect = csv.Sniffer().sniff(sample, delimiters=",;\\t")
+            dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
         except csv.Error:
             dialect = csv.excel
         reader = csv.DictReader(handle, dialect=dialect)
