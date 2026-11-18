@@ -1,0 +1,8 @@
+used_page_names.json
+*.log
+__pycache__/
+*.pyc
+.env
+secrets.json
+facebook_token.json
+gemini_key.txt
