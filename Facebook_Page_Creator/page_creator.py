@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Facebook Page Creator: map CSV columns and prepare one or all page folders."""
+"""Facebook Page Creator: map CSV columns and prepare page folders locally."""
 import csv, json, shutil, tkinter as tk, webbrowser, re, os
 from pathlib import Path
 from tkinter import ttk, filedialog, messagebox
@@ -7,11 +7,20 @@ from tkinter import ttk, filedialog, messagebox
 APP_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = APP_DIR / "prepared_pages"
 FIELDS = [
-    ("page_name", "اسم الصفحة"), ("username", "اسم المستخدم المقترح"),
-    ("category", "التصنيف"), ("description", "الوصف"),
-    ("bio", "نبذة قصيرة"), ("website", "الموقع الإلكتروني"),
-    ("email", "البريد الإلكتروني"), ("phone", "الهاتف"),
-    ("city", "المدينة"), ("language", "اللغة"), ("profile_image", "صورة البروفايل (مسار الصورة)"),
+    ("page_name", "اسم الصفحة"),
+    ("username", "اسم المستخدم المقترح"),
+    ("bio", "نبذة قصيرة"),
+    ("description", "الوصف الكامل"),
+    ("category", "التصنيف"),
+    ("profile_image_prompt", "وصف صورة البروفايل"),
+    ("cover_image_prompt", "وصف صورة الغلاف"),
+    ("keywords", "الكلمات المفتاحية"),
+    ("profile_image", "مسار صورة البروفايل (اختياري)"),
+    ("website", "الموقع الإلكتروني"),
+    ("email", "البريد الإلكتروني"),
+    ("phone", "الهاتف"),
+    ("city", "المدينة"),
+    ("language", "اللغة"),
 ]
 
 def slugify(value):
@@ -22,8 +31,8 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("Facebook Page Creator | تجهيز الصفحات من CSV")
-        root.geometry("980x790")
-        root.minsize(800, 650)
+        root.geometry("1020x820")
+        root.minsize(820, 680)
         self.entries, self.rows, self.headers = {}, [], []
         self.mapping, self.index = {}, 0
         self.profile = self.cover = self.csv_path = None
@@ -33,7 +42,7 @@ class App:
     def build(self):
         outer = ttk.Frame(self.root, padding=12); outer.pack(fill="both", expand=True)
         ttk.Label(outer, text="أداة تجهيز صفحات Facebook", font=("Segoe UI", 17, "bold")).pack(anchor="w")
-        ttk.Label(outer, text="حمّل CSV بأي أسماء أعمدة، واربط كل خانة بالعمود المناسب مثل طريقة Blogger.", wraplength=930).pack(anchor="w", pady=(4,10))
+        ttk.Label(outer, text="حمّل CSV بالقالب المرفق أو بأي أسماء أعمدة، ثم اربط الأعمدة بخانات الصفحة. الأداة لا تنشر ولا تنشئ الصفحة تلقائياً.", wraplength=970).pack(anchor="w", pady=(4,10))
         bar = ttk.LabelFrame(outer, text="ملف CSV وربط الأعمدة", padding=8); bar.pack(fill="x")
         row = ttk.Frame(bar); row.pack(fill="x")
         ttk.Button(row, text="تحميل CSV واختيار الأعمدة", command=self.load_csv).pack(side="left", padx=4)
@@ -46,11 +55,11 @@ class App:
         ttk.Button(nav, text="التالي ▶", command=self.next).pack(side="left")
         form = ttk.LabelFrame(outer, text="معلومات الصفحة الحالية", padding=9); form.pack(fill="both", expand=True)
         for i,(key,label) in enumerate(FIELDS):
-            r,c = divmod(i,2); cell=ttk.Frame(form); cell.grid(row=r,column=c,sticky="ew",padx=7,pady=5)
+            r,c = divmod(i,2); cell=ttk.Frame(form); cell.grid(row=r,column=c,sticky="ew",padx=7,pady=4)
             ttk.Label(cell,text=label).pack(anchor="w")
             ent=ttk.Entry(cell); ent.pack(fill="x",pady=(2,0)); self.entries[key]=ent
         form.columnconfigure(0,weight=1); form.columnconfigure(1,weight=1)
-        assets=ttk.LabelFrame(outer,text="صور اختيارية مشتركة للصفحات",padding=8); assets.pack(fill="x",pady=(8,0))
+        assets=ttk.LabelFrame(outer,text="صور فعلية اختيارية (يمكن تركها فارغة)",padding=8); assets.pack(fill="x",pady=(8,0))
         a=ttk.Frame(assets); a.pack(fill="x")
         self.profile_label=ttk.Label(a,text="Profile: لم يتم الاختيار"); self.profile_label.pack(side="left",expand=True,anchor="w")
         ttk.Button(a,text="اختيار Profile",command=self.pick_profile).pack(side="right")
@@ -61,7 +70,7 @@ class App:
         ttk.Button(actions,text="حفظ الصفحة الحالية",command=self.save_current).pack(side="left",padx=4)
         ttk.Button(actions,text="فتح إنشاء صفحة Facebook",command=lambda:webbrowser.open("https://www.facebook.com/pages/create/")).pack(side="left",padx=4)
         ttk.Button(actions,text="فتح مجلد النتائج",command=self.open_output).pack(side="left",padx=4)
-        ttk.Label(outer,textvariable=self.status,wraplength=930).pack(anchor="w",pady=(6,0))
+        ttk.Label(outer,textvariable=self.status,wraplength=970).pack(anchor="w",pady=(6,0))
 
     def load_csv(self):
         path=filedialog.askopenfilename(title="اختيار CSV",filetypes=[("CSV files","*.csv")])
@@ -84,6 +93,9 @@ class App:
           "category":["category","type","التصنيف","الفئة"],
           "description":["description","full description","وصف","الوصف","article"],
           "bio":["bio","short description","short bio","نبذة","نبذة قصيرة"],
+          "profile_image_prompt":["profile_image_prompt","profile image prompt","profile prompt","وصف صورة البروفايل"],
+          "cover_image_prompt":["cover_image_prompt","cover image prompt","cover prompt","وصف صورة الغلاف"],
+          "keywords":["keywords","tags","الكلمات المفتاحية","كلمات مفتاحية"],
           "website":["website","url","site","الموقع"],"email":["email","البريد"],
           "phone":["phone","telephone","الهاتف"],"city":["city","location","المدينة"],
           "language":["language","lang","اللغة"],
@@ -96,13 +108,13 @@ class App:
     def mapping_window(self):
         if not self.headers:
             messagebox.showinfo("CSV","حمّل ملف CSV أولاً."); return
-        win=tk.Toplevel(self.root); win.title("اختيار أعمدة CSV"); win.geometry("600x610"); win.transient(self.root)
-        ttk.Label(win,text="اختَر العمود المناسب لكل معلومة. الاختيار اختياري ما عدا اسم الصفحة.",wraplength=560).pack(anchor="w",padx=12,pady=10)
+        win=tk.Toplevel(self.root); win.title("اختيار أعمدة CSV"); win.geometry("650x700"); win.transient(self.root)
+        ttk.Label(win,text="اختَر العمود المناسب لكل معلومة. الاختيار اختياري ما عدا اسم الصفحة.",wraplength=610).pack(anchor="w",padx=12,pady=10)
         vars_={}; frame=ttk.Frame(win,padding=10); frame.pack(fill="both",expand=True)
         for i,(key,label) in enumerate(FIELDS):
-            ttk.Label(frame,text=label).grid(row=i,column=0,sticky="w",padx=5,pady=5)
+            ttk.Label(frame,text=label).grid(row=i,column=0,sticky="w",padx=5,pady=4)
             v=tk.StringVar(value=self.mapping.get(key) or "(بدون ربط)")
-            ttk.Combobox(frame,textvariable=v,values=["(بدون ربط)"]+self.headers,state="readonly",width=34).grid(row=i,column=1,sticky="ew",padx=5,pady=5)
+            ttk.Combobox(frame,textvariable=v,values=["(بدون ربط)"]+self.headers,state="readonly",width=36).grid(row=i,column=1,sticky="ew",padx=5,pady=4)
             vars_[key]=v
         frame.columnconfigure(1,weight=1)
         def apply():
@@ -140,7 +152,7 @@ class App:
         if not name:raise ValueError("اسم الصفحة فارغ")
         folder=OUTPUT_DIR/slugify(name);folder.mkdir(parents=True,exist_ok=True)
         (folder/"page_info.json").write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
-        text=(f"اسم الصفحة: {name}\nاسم المستخدم المقترح: {data.get('username','')}\nالتصنيف: {data.get('category','')}\n\nالوصف:\n{data.get('description','')}\n\nالنبذة:\n{data.get('bio','')}\nالموقع: {data.get('website','')}\nالبريد: {data.get('email','')}\nالهاتف: {data.get('phone','')}\nالمدينة: {data.get('city','')}\nاللغة: {data.get('language','')}\n")
+        text=(f"اسم الصفحة: {name}\nاسم المستخدم المقترح: {data.get('username','')}\nالتصنيف: {data.get('category','')}\n\nالنبذة:\n{data.get('bio','')}\n\nالوصف الكامل:\n{data.get('description','')}\n\nوصف صورة البروفايل:\n{data.get('profile_image_prompt','')}\nوصف صورة الغلاف:\n{data.get('cover_image_prompt','')}\nالكلمات المفتاحية: {data.get('keywords','')}\nالموقع: {data.get('website','')}\nالبريد: {data.get('email','')}\nالهاتف: {data.get('phone','')}\nالمدينة: {data.get('city','')}\nاللغة: {data.get('language','')}\n")
         (folder/"about.txt").write_text(text,encoding="utf-8")
         image_value = str(data.get("profile_image", "")).strip()
         image_source = None
@@ -148,8 +160,7 @@ class App:
             candidate = Path(image_value).expanduser()
             if not candidate.is_absolute() and self.csv_path:
                 candidate = self.csv_path.parent / candidate
-            if candidate.exists() and candidate.is_file():
-                image_source = candidate
+            if candidate.exists() and candidate.is_file(): image_source = candidate
         if image_source:
             shutil.copy2(image_source, folder / ("profile" + image_source.suffix.lower()))
         elif self.profile and self.profile.exists():
@@ -167,8 +178,14 @@ class App:
         if not self.rows or not self.mapping.get("page_name"):
             messagebox.showinfo("CSV","حمّل CSV واربط عمود اسم الصفحة أولاً.");return
         done,errors=0,[]
+        seen=set()
         for i,row in enumerate(self.rows,1):
-            try:self.save_data(self.mapped(row));done+=1
+            try:
+                data=self.mapped(row)
+                key=slugify(data.get("page_name",""))
+                if key in seen: raise ValueError("اسم الصفحة مكرر داخل ملف CSV.")
+                seen.add(key)
+                self.save_data(data);done+=1
             except Exception as e:errors.append(f"السطر {i+1}: {e}")
         self.status.set(f"اكتمل التجهيز: {done} صفحة من أصل {len(self.rows)}.")
         msg=f"تم تجهيز {done} صفحة من أصل {len(self.rows)}."
