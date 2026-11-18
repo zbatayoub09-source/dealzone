@@ -80,6 +80,12 @@ class App:
     self.root=root; root.title('منشئ صفحات Facebook - DealZone'); root.geometry('1080x720'); self.rows=[]; self.path=None
     box=ttk.Frame(root,padding=14); box.pack(fill='both',expand=True)
     ttk.Label(box,text='منشئ صفحات Facebook',font=('Segoe UI',18,'bold')).pack(anchor='w')
+    template=BASE/'pages_template.csv'
+    if template.exists():
+        try:
+            self.rows=load_csv(template); self.path=template
+        except Exception:
+            pass
     ttk.Label(box,text='اختار CSV ديالك، اختار الصفحة، وخدم مباشرة. ما محتاجش Gemini باش تستعمل CSV موجود.',font=('Segoe UI',10)).pack(anchor='w',pady=(3,12))
     bar=ttk.Frame(box); bar.pack(fill='x',pady=4)
     ttk.Button(bar,text='📂 اختيار ملف CSV',command=self.open_csv).pack(side='left')
@@ -101,6 +107,9 @@ class App:
     self.url=tk.StringVar(); ttk.Entry(row,textvariable=self.url).pack(side='left',fill='x',expand=True,padx=8)
     ttk.Button(row,text='حفظ: تم الإنشاء',command=self.mark).pack(side='left')
     ttk.Label(box,text='ملاحظة: إنشاء الصفحة يتم من حسابك على Facebook. البرنامج لا يطلب كلمة السر ولا ينشئ الصفحة وحده.',foreground='#555').pack(anchor='w',pady=4)
+    if self.rows:
+        self.refresh()
+        self.status.set('وجدنا CSV جاهزاً فيه '+str(len(self.rows))+' صفحات. اختار صفحة وابدأ.')
 
  def open_csv(self):
     name=filedialog.askopenfilename(title='اختار ملف CSV',filetypes=[('CSV files','*.csv'),('All files','*.*')])
