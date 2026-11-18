@@ -152,9 +152,9 @@ def make_row_key(csv_path, line_number, row):
 class PublisherApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Facebook Comment Publisher | DealZone")
-        self.root.geometry("940x720")
-        self.root.minsize(800, 620)
+        self.root.title("برنامج التعليقات على فيسبوك")
+        self.root.geometry("860x680")
+        self.root.minsize(760, 600)
         self.settings = load_settings()
         self.pages = self.settings.get("pages", [])
         self.csv_file = None
@@ -177,8 +177,8 @@ class PublisherApp:
     def build_ui(self):
         outer = ttk.Frame(self.root, padding=14)
         outer.pack(fill="both", expand=True)
-        ttk.Label(outer, text="Facebook Comment Publisher", font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        ttk.Label(outer, text="تعليق على روابط منشورات Facebook باستعمال CSV وMeta API.",
+        ttk.Label(outer, text="برنامج التعليقات على فيسبوك", font=("Segoe UI", 18, "bold")).pack(anchor="w")
+        ttk.Label(outer, text="اختار الصفحة، حمّل ملف CSV، ومن بعد ابدأ التعليق.",
                   foreground="#555").pack(anchor="w", pady=(2, 10))
 
         api_box = ttk.LabelFrame(outer, text="1) Facebook API — جلب الصفحات", padding=10)
@@ -192,16 +192,16 @@ class PublisherApp:
         ttk.Label(api_box, text="دخل User Access Token مرة واحدة. البرنامج يجلب أسماء الصفحات وID وPage Token تلقائياً ويحفظ الإعدادات محلياً. ما تشاركش Token.",
                   foreground="#8a4b08", wraplength=850).pack(anchor="w")
 
-        pages_box = ttk.LabelFrame(outer, text="2) اختار الصفحة أو الصفحات (Ctrl / Shift)", padding=10)
+        pages_box = ttk.LabelFrame(outer, text="2) اختار صفحة واحدة فقط", padding=10)
         pages_box.pack(fill="both", expand=True, pady=(0, 9))
         list_frame = ttk.Frame(pages_box)
         list_frame.pack(fill="both", expand=True)
-        self.pages_list = tk.Listbox(list_frame, selectmode=tk.EXTENDED, height=7, exportselection=False)
+        self.pages_list = tk.Listbox(list_frame, selectmode=tk.BROWSE, height=6, exportselection=False)
         self.pages_list.pack(side="left", fill="both", expand=True)
         scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.pages_list.yview)
         scroll.pack(side="right", fill="y")
         self.pages_list.configure(yscrollcommand=scroll.set)
-        ttk.Label(pages_box, text="اختار الصفحة المطلوبة من اللائحة. يمكن تحديد أكثر من صفحة باستعمال Ctrl أو Shift.",
+        ttk.Label(pages_box, text="اختار الصفحة اللي كينتمي ليها المنشور. البرنامج غادي يخدم غير بهاد الصفحة.",
                   foreground="#555").pack(anchor="w", pady=(7, 0))
 
         csv_box = ttk.LabelFrame(outer, text="3) CSV", padding=10)
@@ -210,8 +210,8 @@ class PublisherApp:
         row.pack(fill="x")
         self.csv_label = ttk.Label(row, text="مازال ما اخترتيش CSV")
         self.csv_label.pack(side="left", fill="x", expand=True)
-        ttk.Button(row, text="اختيار CSV", command=self.choose_csv).pack(side="right")
-        ttk.Button(row, text="＋ Nouveau / إنشاء CSV", command=self.create_csv).pack(side="right", padx=8)
+        ttk.Button(row, text="اختيار ملف CSV", command=self.choose_csv).pack(side="right")
+        ttk.Button(row, text="إنشاء CSV جديد", command=self.create_csv).pack(side="right", padx=8)
         mapping = ttk.Frame(csv_box)
         mapping.pack(fill="x", pady=(8, 0))
         for index, (key, label) in enumerate([
@@ -235,9 +235,9 @@ class PublisherApp:
 
         actions = ttk.Frame(outer)
         actions.pack(fill="x", pady=(0, 8))
-        self.start_button = ttk.Button(actions, text="START COMMENTING", command=self.start)
+        self.start_button = ttk.Button(actions, text="ابدأ التعليق", command=self.start)
         self.start_button.pack(side="left", fill="x", expand=True)
-        self.stop_button = ttk.Button(actions, text="STOP", command=self.stop, state="disabled")
+        self.stop_button = ttk.Button(actions, text="إيقاف", command=self.stop, state="disabled")
         self.stop_button.pack(side="left", padx=(8, 0))
 
         log_box = ttk.LabelFrame(outer, text="النتائج والأخطاء", padding=8)
@@ -417,7 +417,16 @@ class PublisherApp:
         except Exception as exc:
             messagebox.showerror("خطأ", str(exc))
             return
-        pages = [self.pages[i].copy() for i in selected]
+        pages = [self.pages[selected[0]].copy()]
+        confirm_text = (
+            f"غادي نحاول نكتب {len(rows)} تعليق(ات) باستعمال الصفحة:\n"
+            f"{pages[0].get('name', 'Facebook Page')}\n\n"
+            "مهم: خاص رابط كل منشور يكون متاح لهاد الصفحة. "
+            "إلا كان المنشور تابع لصفحة أخرى، Meta ممكن ترفض التعليق.\n\n"
+            "واش نبدأ؟"
+        )
+        if not messagebox.askyesno("تأكيد قبل البدء", confirm_text):
+            return
         self.stop_event.clear()
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
@@ -510,7 +519,7 @@ class PublisherApp:
                     self.refresh_pages()
                     self.pages_list.selection_clear(0, "end")
                     self.fetch_button.configure(state="normal")
-                    self.status.set(f"تم جلب {count_added} صفحة. اختار الصفحة أو الصفحات.")
+                    self.status.set(f"تم جلب {count_added} صفحة. اختار صفحة واحدة فقط.")
                     self.log_line(f"تم جلب {count_added} صفحة من Meta.")
                 elif kind == "error":
                     self.fetch_button.configure(state="normal")
