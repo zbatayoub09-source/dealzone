@@ -211,6 +211,7 @@ class PublisherApp:
         self.csv_label = ttk.Label(row, text="مازال ما اخترتيش CSV")
         self.csv_label.pack(side="left", fill="x", expand=True)
         ttk.Button(row, text="اختيار CSV", command=self.choose_csv).pack(side="right")
+        ttk.Button(row, text="＋ Nouveau / إنشاء CSV", command=self.create_csv).pack(side="right", padx=8)
         mapping = ttk.Frame(csv_box)
         mapping.pack(fill="x", pady=(8, 0))
         for index, (key, label) in enumerate([
@@ -280,6 +281,98 @@ class PublisherApp:
             except Exception as exc:
                 self.events.put(("error", str(exc)))
         threading.Thread(target=task, daemon=True).start()
+
+    def create_csv(self):
+        win = tk.Toplevel(self.root)
+        win.title("إنشاء CSV جديد — نفس الأعمدة")
+        win.transient(self.root)
+        win.grab_set()
+        win.geometry("850x560")
+        win.minsize(700, 480)
+        frame = ttk.Frame(win, padding=12)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="زيد السطور اللي بغيتي، ومن بعد حفظ CSV. رابط المنشور والتعليق ضروريان؛ رابط الصورة اختياري.", wraplength=800, foreground="#555").pack(anchor="w", pady=(0, 10))
+        fields = ttk.LabelFrame(frame, text="سطر جديد", padding=10)
+        fields.pack(fill="x")
+        photo_var, post_var, comment_var = tk.StringVar(), tk.StringVar(), tk.StringVar()
+        ttk.Label(fields, text="رابط الصورة (اختياري):").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Entry(fields, textvariable=photo_var).grid(row=0, column=1, sticky="ew", pady=4)
+        ttk.Label(fields, text="رابط منشور Facebook (ضروري):").grid(row=1, column=0, sticky="w", pady=4)
+        post_entry = ttk.Entry(fields, textvariable=post_var)
+        post_entry.grid(row=1, column=1, sticky="ew", pady=4)
+        ttk.Label(fields, text="نص التعليق (ضروري):").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Entry(fields, textvariable=comment_var).grid(row=2, column=1, sticky="ew", pady=4)
+        fields.columnconfigure(1, weight=1)
+        table_box = ttk.LabelFrame(frame, text="السطور المضافة", padding=8)
+        table_box.pack(fill="both", expand=True, pady=10)
+        columns = ("Photo_Link", "Facebook_Link", "Comment")
+        tree = ttk.Treeview(table_box, columns=columns, show="headings", height=9)
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=240)
+        tree.pack(side="left", fill="both", expand=True)
+        scroll = ttk.Scrollbar(table_box, orient="vertical", command=tree.yview)
+        scroll.pack(side="right", fill="y")
+        tree.configure(yscrollcommand=scroll.set)
+        rows = []
+        def add_row():
+            photo, post, comment = photo_var.get().strip(), post_var.get().strip(), comment_var.get().strip()
+            if not post or not comment:
+                messagebox.showwarning("معلومات ناقصة", "دخل رابط منشور Facebook ونص التعليق. رابط الصورة اختياري.", parent=win)
+                return
+            try:
+                extract_post_id(post)
+            except ValueError as exc:
+                messagebox.showwarning("رابط المنشور", str(exc), parent=win)
+                return
+            rows.append((photo, post, comment))
+            tree.insert("", "end", values=(photo, post, comment))
+            photo_var.set("")
+            post_var.set("")
+            comment_var.set("")
+            post_entry.focus_set()
+        def remove_row():
+            selected = tree.selection()
+            if not selected:
+                messagebox.showinfo("اختيار سطر", "اختار السطر اللي بغيتي تحيد.", parent=win)
+                return
+            indices = sorted((tree.index(item) for item in selected), reverse=True)
+            for item in selected:
+                tree.delete(item)
+            for index in indices:
+                if 0 <= index < len(rows):
+                    rows.pop(index)
+        def save_csv():
+            if not rows:
+                messagebox.showwarning("CSV فارغ", "زيد سطراً واحداً على الأقل قبل الحفظ.", parent=win)
+                return
+            target = filedialog.asksaveasfilename(parent=win, title="حفظ CSV", defaultextension=".csv", initialfile="facebook_comments.csv", filetypes=[("CSV files", "*.csv")])
+            if not target:
+                return
+            try:
+                with open(target, "w", encoding="utf-8-sig", newline="") as handle:
+                    writer = csv.writer(handle)
+                    writer.writerow(["Photo_Link", "Facebook_Link", "Comment"])
+                    writer.writerows(rows)
+                self.csv_file = Path(target)
+                for combo in self.column_boxes.values():
+                    combo["values"] = ["Photo_Link", "Facebook_Link", "Comment"]
+                self.column_vars["Photo_Link"].set("Photo_Link")
+                self.column_vars["Facebook_Link"].set("Facebook_Link")
+                self.column_vars["Comment"].set("Comment")
+                self.csv_label.configure(text=f"{self.csv_file.name} — {len(rows)} سطر جاهز")
+                self.log_line(f"تم إنشاء CSV: {self.csv_file.name} ({len(rows)} سطر)")
+                self.status.set(f"CSV واجد: {len(rows)} سطر. اختار الصفحة واضغط START COMMENTING.")
+                win.destroy()
+            except Exception as exc:
+                messagebox.showerror("خطأ فالحفظ", str(exc), parent=win)
+        controls = ttk.Frame(frame)
+        controls.pack(fill="x")
+        ttk.Button(controls, text="＋ إضافة هاد السطر", command=add_row).pack(side="left")
+        ttk.Button(controls, text="حذف السطر المختار", command=remove_row).pack(side="left", padx=8)
+        ttk.Button(controls, text="حفظ CSV", command=save_csv).pack(side="right")
+        ttk.Button(controls, text="إغلاق", command=win.destroy).pack(side="right", padx=8)
+        post_entry.focus_set()
 
     def choose_csv(self):
         path = filedialog.askopenfilename(title="اختار CSV", filetypes=[("CSV files", "*.csv")])
