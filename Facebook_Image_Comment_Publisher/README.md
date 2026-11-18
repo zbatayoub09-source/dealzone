@@ -1,52 +1,41 @@
-# Facebook Image + Auto Comment Publisher
+# Facebook Comment Publisher
 
-A separate Windows desktop app inside the DealZone repository. It does not modify Blogger, Partage Social, or other existing projects.
+برنامج Windows مستقل للتعليق على روابط منشورات Facebook باستعمال Meta Graph API. لا يغيّر Blogger أو Partage Social أو أي مشروع آخر.
 
-## What it does
+## التشغيل
+1. نزّل المجلد كاملاً.
+2. شغّل `RUN.bat`.
+3. أدخل User Access Token ثم اضغط **اختبار Token وجلب الصفحات**.
+4. اختَر صفحة واحدة أو عدة صفحات (Ctrl أو Shift). يمكن إضافة Page ID وPage Access Token يدوياً.
+5. اختَر CSV واضغط **START COMMENTING**.
 
-1. Save one or more Facebook Pages in the app (Page name, Page ID, Page Access Token).
-2. Choose a CSV file.
-3. For each CSV row, upload/publish the image first, then create a separate comment under the resulting Facebook post.
-4. Keep a local publishing log and stop the run between rows.
+## CSV — ثلاثة أعمدة فقط
+```csv
+Photo_Link,Facebook_Link,Comment
+https://example.com/photo.jpg,https://www.facebook.com/...,تعليق تجريبي
+```
+- `Photo_Link`: اختياري؛ رابط صورة عام يمكن إرفاقه بالتعليق إذا قبلته Meta.
+- `Facebook_Link`: رابط منشور Facebook المستهدف.
+- `Comment`: نص التعليق.
 
-## CSV format
+## استقلال الصفحات
+- كل صفحة عندها ملف حالة مستقل داخل `data/state/<PAGE_ID>.json` لمنع إعادة إرسال نفس السطر بعد نجاحه.
+- نتائج كل صفحة تحفظ مستقلة داخل `output`.
+- اختيار عدة صفحات يعني أن البرنامج يحاول تنفيذ أسطر CSV نفسها لكل صفحة مختارة.
+- إعدادات الصفحات والتوكنات تحفظ محلياً داخل `data/settings.json` على حاسوبك. لا ترفع هذا الملف إلى GitHub ولا تشاركه.
 
-Required column names:
+## صلاحيات Meta وحدودها
+- جلب الصفحات يتطلب User Access Token مع صلاحية مثل `pages_show_list`.
+- التعليق يتطلب Page Access Token وصلاحيات Meta المناسبة، وغالباً `pages_manage_engagement` وصلاحيات قراءة/وصول مناسبة للصفحة.
+- Meta قد ترفض التعليق على منشورات لا تديرها الصفحة أو لا تسمح بها الصلاحيات أو نوع المنشور. وجود Token لا يضمن قبول كل تعليق.
+- البرنامج يتعامل مع روابط المنشورات التي يمكن استخراج Graph object ID منها. بعض روابط `pfbid` والروابط المختصرة لا تكشف ID رقمي، وقد تحتاج رابطاً آخر.
+- `Photo_Link` يُرسل كـ `attachment_url`؛ إذا رفضته Meta سيظهر سبب الفشل في ملف النتائج.
 
-- \`page_name\`: must match the saved Page name in the app (case-insensitive).
-- \`image\`: either a public HTTP/HTTPS image URL or a local image path.
-- \`comment\`: the text to publish as a separate comment.
+## الملفات
+- `RUN.bat`: تشغيل البرنامج.
+- `comments_template.csv`: نموذج CSV.
+- `data/settings.json`: إعدادات الصفحات محلياً (حساس).
+- `data/state`: سجل مستقل لكل صفحة.
+- `output`: نتائج كل صفحة.
 
-Example:
-
-\`\`\`csv
-page_name,image,comment
-My Facebook Page,images/photo1.jpg,"Check the details in the first comment."
-\`\`\`
-
-The sample file is \`sample_posts.csv\`. Local image paths can be absolute paths or relative to this app folder.
-
-## Run on Windows
-
-Double-click \`RUN.BAT\`. It creates a local virtual environment and installs the required package automatically.
-
-## Facebook API setup
-
-Use a valid **Page Access Token** for each Page, with the permissions and app review/access required by Meta for the intended Page publishing and engagement actions. Add the Page ID and token inside the app.
-
-The app uses the Graph API version configured in \`main.py\` (\`v26.0\`). Change \`GRAPH_VERSION\` if your Meta app is configured for a different currently supported version.
-
-## Important safety and limits
-
-- Facebook/Meta enforces rate limits, content policies, and anti-spam restrictions. There is no guaranteed unlimited publishing.
-- Use a sensible delay between rows; the default is 30 seconds. A larger delay may be appropriate for your Pages.
-- The app does not bypass Meta limits or automate account creation.
-- Tokens are saved in local \`settings.json\`, which is excluded from Git by \`.gitignore\`. Do not share this file or commit tokens to GitHub.
-- A photo can be published even if the follow-up comment fails. The log reports that case so you do not unknowingly republish the image.
-
-## Troubleshooting
-
-- If Facebook rejects the request, read the exact API error in the Publishing Log.
-- Confirm the token belongs to the selected Page and has the required permissions.
-- If the photo is published but no \`post_id\` is returned, the app stops before attempting the comment.
-- For URL images, the image must be publicly reachable by Meta. Local image files are uploaded directly by the app.
+استعمله للتعليقات الملائمة فقط، وتجنب التكرار والإزعاج واحترم قيود Meta.
