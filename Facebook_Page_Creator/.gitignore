@@ -6,3 +6,5 @@ __pycache__/
 secrets.json
 facebook_token.json
 gemini_key.txt
+*_facebook_results.csv
+local_settings.json
