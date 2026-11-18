@@ -2,3 +2,6 @@ settings.json
 .venv/
 __pycache__/
 *.pyc
+data/settings.json
+data/state/
+output/
