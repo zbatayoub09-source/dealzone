@@ -1,7 +1,19 @@
-# Facebook Page Creator
+# منشئ صفحات Facebook - DealZone
 
-Standalone Windows tool for preparing Facebook Page data with Gemini and exporting CSV. Creation remains manual in Facebook; API page creation is restricted by Meta allowlisting.
+برنامج مستقل لويندوز لتجهيز صفحات Facebook انطلاقاً من ملف CSV.
 
-Run RUN.bat. Enter Gemini API key locally. Generate CSV, select a row, copy its details, create the Page in Facebook, then record its URL.
+## التشغيل السريع
+1. شغّل `RUN.bat`.
+2. اضغط **اختيار ملف CSV** واختر ملفك.
+3. اختار صفحة من الجدول.
+4. استعمل أزرار نسخ الاسم والوصف وPrompts ديال الصور.
+5. اضغط فتح Facebook وكمل إنشاء الصفحة من حسابك.
+6. دخل رابط الصفحة واضغط **حفظ: تم الإنشاء**. البرنامج يحدّث نفس ملف CSV.
 
-Do not commit API keys or access tokens.
+## أعمدة CSV
+العمود الأساسي هو `PageName` أو `اسم الصفحة`. الأعمدة الاختيارية: `Category`, `Description`, `UsernameSuggestion`, `ProfileImagePrompt`, `CoverImagePrompt`, `Website`, `Status`, `PageURL`, `CreatedAt`. يقبل البرنامج العناوين الإنجليزية وبعض العناوين العربية.
+
+## توليد CSV اختياري
+يمكنك فتح **توليد CSV جديد بـ Gemini** وإدخال Gemini API Key محلياً. لا تحتاج Gemini إذا كان عندك CSV جاهز.
+
+مهم: البرنامج لا ينشئ الصفحة أوتوماتيكياً ولا يطلب كلمة مرور Facebook. إنشاء الصفحة يتم يدوياً من حسابك. لا ترفع API keys أو access tokens إلى GitHub.
