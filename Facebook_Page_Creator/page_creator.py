@@ -95,6 +95,9 @@ class App:
         root.geometry("900x720")
         root.minsize(780, 650)
         self.user_token = tk.StringVar()
+        self.manual_page_id = tk.StringVar()
+        self.manual_page_token = tk.StringVar()
+        self.manual_page_name = tk.StringVar()
         self.csv_path = None
         self.pages = []
         self.busy = False
@@ -113,8 +116,15 @@ class App:
         ttk.Entry(api_box, textvariable=self.user_token, show="*", width=75).grid(row=0, column=1, sticky="ew", padx=8)
         ttk.Button(api_box, text="اختبار Token وجلب الصفحات", command=self.load_pages).grid(row=0, column=2, padx=4)
         api_box.columnconfigure(1, weight=1)
-        ttk.Label(api_box, text="دخل User Token هنا فقط. البرنامج ما كيحفظوش وما ترسلوش لأي واحد.",
+        ttk.Label(api_box, text="دخل User Token هنا فقط لجلب جميع الصفحات. أو استعمل Page ID و Page Access Token يدوياً.",
                   foreground="#9a4b00").grid(row=1, column=0, columnspan=3, sticky="w", pady=4)
+        ttk.Label(api_box, text="Page ID").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Entry(api_box, textvariable=self.manual_page_id, width=28).grid(row=2, column=1, sticky="ew", padx=8)
+        ttk.Label(api_box, text="Page Access Token").grid(row=3, column=0, sticky="w", pady=5)
+        ttk.Entry(api_box, textvariable=self.manual_page_token, show="*", width=75).grid(row=3, column=1, sticky="ew", padx=8)
+        ttk.Label(api_box, text="اسم الصفحة (اختياري)").grid(row=4, column=0, sticky="w", pady=5)
+        ttk.Entry(api_box, textvariable=self.manual_page_name, width=28).grid(row=4, column=1, sticky="ew", padx=8)
+        ttk.Button(api_box, text="إضافة الصفحة يدوياً", command=self.add_manual_page).grid(row=4, column=2, padx=4)
 
         pages_box = ttk.LabelFrame(main, text="صفحات Facebook — تقدر تختار أكثر من صفحة (Ctrl أو Shift)", padding=8)
         pages_box.pack(fill="both", expand=True, pady=7)
@@ -159,6 +169,22 @@ class App:
             except Exception as exc:
                 messagebox.showerror("CSV", str(exc))
 
+    def add_manual_page(self):
+        pid = self.manual_page_id.get().strip()
+        token = self.manual_page_token.get().strip()
+        name = self.manual_page_name.get().strip() or ("Page " + pid)
+        if not pid or not token:
+            messagebox.showwarning("Page API", "دخل Page ID و Page Access Token.")
+            return
+        if any(str(p.get("id")) == pid for p in self.pages):
+            messagebox.showinfo("Page API", "هاد الصفحة مضافة من قبل.")
+            return
+        self.pages.append({"id": pid, "name": name, "access_token": token, "tasks": ["CREATE_CONTENT"]})
+        self.page_list.insert("end", name + " | " + pid + " (يدوية)")
+        self.page_list.selection_clear(0, "end")
+        self.page_list.selection_set("end")
+        self.status.set("تزادت الصفحة يدوياً. تقدر تزيد صفحات أخرى أو تختار CSV.")
+
     def load_pages(self):
         token = self.user_token.get().strip()
         if not token:
@@ -182,11 +208,15 @@ class App:
             valid = [p for p in pages if p.get("id") and p.get("access_token")]
             if not valid:
                 raise RuntimeError("ما رجعوش Page Access Tokens. راجع صلاحيات التطبيق والحساب.")
-            self.pages = valid
+            existing = {str(p.get("id")): p for p in self.pages}
+            for p in valid:
+                existing[str(p["id"])] = p
+            self.pages = list(existing.values())
             def done():
                 self.page_list.delete(0, "end")
                 for p in self.pages:
-                    self.page_list.insert("end", p.get("name", "Facebook Page") + " | " + str(p["id"]))
+                    suffix = " (يدوية)" if p.get("tasks") == ["CREATE_CONTENT"] else ""
+                    self.page_list.insert("end", p.get("name", "Facebook Page") + " | " + str(p["id"]) + suffix)
                 self.page_list.selection_set(0, "end")
                 self.status.set("نجح الاتصال: لقينا " + str(len(self.pages)) + " صفحة. اختار الصفحات المطلوبة.")
             self.root.after(0, done)
