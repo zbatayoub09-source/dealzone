@@ -97,7 +97,7 @@ class App:
         prompt=("Create one original professional Facebook Page record. Return only valid JSON. Exact keys: "+json.dumps(COLS)+
         ". Write in English. Create unique Page Name and Username, concise Bio, useful Description, suitable Category, detailed profile and cover image prompts, keywords, and a ready-to-publish introductory Post Message. Avoid false claims and spam. Do not reuse these names: "+
         json.dumps(sorted(used)[-250:],ensure_ascii=False)+". Input: "+json.dumps(seed,ensure_ascii=False)+". Row "+str(rowno))
-        body=json.dumps({"contents":[{"role":"user","parts":[{"text":prompt}]}],"generationConfig":{"responseMimeType":"application/json","temperature":0.8}}).encode()
+        body=json.dumps({"contents":[{"role":"user","parts":[{"text":prompt}]}],"generationConfig":{"responseMimeType":"application/json"}}).encode()
         result=api(GEMINI,body,{"Content-Type":"application/json","x-goog-api-key":key})
         try: txt=result["candidates"][0]["content"]["parts"][0]["text"]
         except Exception: raise RuntimeError("Gemini رجع جواب غير مفهوم: "+str(result)[:400])
