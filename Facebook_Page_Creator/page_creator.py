@@ -127,7 +127,9 @@ class App:
             self.gen_btn.config(state="normal"); self.stop_btn.config(state="disabled")
             self.status.set("تجهز "+str(len(done))+" سجل.")
             if errors: messagebox.showwarning("ملاحظات","\n".join(errors[:8]))
-            if done: messagebox.showinfo("CSV واجد",str(out))
+            if done:
+                self.csv=out; self.file_label.config(text=str(out))
+                messagebox.showinfo("CSV واجد",str(out))
             elif not self.stop_flag: messagebox.showerror("Gemini","ما تجهز حتى سجل.")
         self.root.after(0,finish)
 
@@ -146,7 +148,7 @@ class App:
             def done():
                 self.combo["values"]=labels; self.combo.current(0); self.status.set("تم جلب "+str(len(labels))+" صفحة.")
             self.root.after(0,done)
-        except Exception as e: self.root.after(0,lambda:messagebox.showerror("Facebook API",str(e)))
+        except Exception as e: self.root.after(0,lambda err=str(e):messagebox.showerror("Facebook API",err))
 
     def publish(self):
         ix=self.combo.current()
