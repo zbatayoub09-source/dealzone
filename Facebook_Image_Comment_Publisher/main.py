@@ -164,7 +164,7 @@ class PublisherApp:
         self.events = queue.Queue()
         self.worker = None
         self.stop_event = threading.Event()
-        self.user_token = tk.StringVar()
+        self.user_token = tk.StringVar(value=self.settings.get("user_access_token", ""))
         self.delay = tk.StringVar(value="30")
         self.status = tk.StringVar(value="جاهز.")
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -187,10 +187,10 @@ class PublisherApp:
         token_row = ttk.Frame(api_box)
         token_row.pack(fill="x", pady=4)
         ttk.Entry(token_row, textvariable=self.user_token, show="•").pack(side="left", fill="x", expand=True)
-        self.fetch_button = ttk.Button(token_row, text="اختبار Token وجلب الصفحات", command=self.fetch_pages)
+        self.fetch_button = ttk.Button(token_row, text="جلب / تحديث الصفحات", command=self.fetch_pages)
         self.fetch_button.pack(side="left", padx=(8, 0))
-        ttk.Label(api_box, text="يمكنك كذلك إضافة Page ID وPage Access Token يدوياً. Token ما تشاركوش مع أي واحد.",
-                  foreground="#8a4b08").pack(anchor="w")
+        ttk.Label(api_box, text="دخل User Access Token مرة واحدة. البرنامج يجلب أسماء الصفحات وID وPage Token تلقائياً ويحفظ الإعدادات محلياً. ما تشاركش Token.",
+                  foreground="#8a4b08", wraplength=850).pack(anchor="w")
 
         pages_box = ttk.LabelFrame(outer, text="2) اختار الصفحة أو الصفحات (Ctrl / Shift)", padding=10)
         pages_box.pack(fill="both", expand=True, pady=(0, 9))
@@ -201,11 +201,8 @@ class PublisherApp:
         scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.pages_list.yview)
         scroll.pack(side="right", fill="y")
         self.pages_list.configure(yscrollcommand=scroll.set)
-        buttons = ttk.Frame(pages_box)
-        buttons.pack(fill="x", pady=(7, 0))
-        ttk.Button(buttons, text="إضافة صفحة يدوياً", command=self.add_page).pack(side="left")
-        ttk.Button(buttons, text="تعديل الصفحة", command=self.edit_page).pack(side="left", padx=6)
-        ttk.Button(buttons, text="حذف الصفحة", command=self.delete_page).pack(side="left")
+        ttk.Label(pages_box, text="اختار الصفحة المطلوبة من اللائحة. يمكن تحديد أكثر من صفحة باستعمال Ctrl أو Shift.",
+                  foreground="#555").pack(anchor="w", pady=(7, 0))
 
         csv_box = ttk.LabelFrame(outer, text="3) CSV", padding=10)
         csv_box.pack(fill="x", pady=(0, 9))
@@ -272,6 +269,8 @@ class PublisherApp:
         if not token:
             messagebox.showwarning("Token ناقص", "دخل User Access Token الأول.")
             return
+        self.settings["user_access_token"] = token
+        save_settings(self.settings)
         self.fetch_button.configure(state="disabled")
         self.status.set("كنجيب الصفحات من Meta...")
         def task():
@@ -281,79 +280,6 @@ class PublisherApp:
             except Exception as exc:
                 self.events.put(("error", str(exc)))
         threading.Thread(target=task, daemon=True).start()
-
-    def page_dialog(self, existing=None):
-        original = existing or {}
-        win = tk.Toplevel(self.root)
-        win.title("إعدادات Facebook Page")
-        win.transient(self.root)
-        win.grab_set()
-        win.resizable(False, False)
-        frame = ttk.Frame(win, padding=14)
-        frame.pack(fill="both", expand=True)
-        fields = {}
-        for index, (key, label, secret) in enumerate([
-            ("name", "اسم الصفحة", False),
-            ("page_id", "Page ID", False),
-            ("access_token", "Page Access Token", True),
-        ]):
-            ttk.Label(frame, text=label).grid(row=index, column=0, sticky="w", padx=(0, 12), pady=6)
-            entry = ttk.Entry(frame, width=58, show="•" if secret else "")
-            entry.grid(row=index, column=1, sticky="ew", pady=6)
-            entry.insert(0, original.get(key, ""))
-            fields[key] = entry
-        ttk.Label(frame, text="Token كيتخزن محلياً فـ data/settings.json على هاد الحاسوب فقط. ما ترفعوش لـ GitHub.",
-                  foreground="#9b1c1c", wraplength=440).grid(row=3, column=0, columnspan=2, sticky="w", pady=8)
-        result = {}
-        def save():
-            value = {key: entry.get().strip() for key, entry in fields.items()}
-            if not all(value.values()):
-                messagebox.showerror("معلومات ناقصة", "عمر اسم الصفحة وPage ID وPage Access Token.", parent=win)
-                return
-            result.update(value)
-            win.destroy()
-        buttons = ttk.Frame(frame)
-        buttons.grid(row=4, column=0, columnspan=2, sticky="e")
-        ttk.Button(buttons, text="إلغاء", command=win.destroy).pack(side="right", padx=4)
-        ttk.Button(buttons, text="حفظ", command=save).pack(side="right")
-        win.wait_window()
-        return result or None
-
-    def add_page(self):
-        value = self.page_dialog()
-        if not value:
-            return
-        if any(p.get("page_id") == value["page_id"] for p in self.pages):
-            messagebox.showerror("موجودة", "هاد الصفحة مضافة من قبل.")
-            return
-        self.pages.append(value)
-        self.persist_pages()
-        self.refresh_pages()
-
-    def edit_page(self):
-        selection = self.pages_list.curselection()
-        if not selection:
-            messagebox.showinfo("اختيار الصفحة", "اختار صفحة أولاً.")
-            return
-        index = selection[0]
-        value = self.page_dialog(self.pages[index])
-        if value:
-            self.pages[index] = value
-            self.persist_pages()
-            self.refresh_pages()
-            self.pages_list.selection_set(index)
-
-    def delete_page(self):
-        selection = self.pages_list.curselection()
-        if not selection:
-            messagebox.showinfo("اختيار الصفحة", "اختار صفحة أولاً.")
-            return
-        index = selection[0]
-        name = self.pages[index].get("name", "Page")
-        if messagebox.askyesno("تأكيد", f"واش بغيتي تحذف إعدادات {name} من البرنامج؟"):
-            del self.pages[index]
-            self.persist_pages()
-            self.refresh_pages()
 
     def choose_csv(self):
         path = filedialog.askopenfilename(title="اختار CSV", filetypes=[("CSV files", "*.csv")])
@@ -489,8 +415,7 @@ class PublisherApp:
                         count_added += 1
                     self.persist_pages()
                     self.refresh_pages()
-                    if self.pages:
-                        self.pages_list.selection_set(0, "end")
+                    self.pages_list.selection_clear(0, "end")
                     self.fetch_button.configure(state="normal")
                     self.status.set(f"تم جلب {count_added} صفحة. اختار الصفحة أو الصفحات.")
                     self.log_line(f"تم جلب {count_added} صفحة من Meta.")
