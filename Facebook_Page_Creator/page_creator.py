@@ -31,8 +31,8 @@ ALIASES = {
 
 def clean_json(text):
     text = text.strip()
-    text = re.sub(r"^\`\`\`(?:json)?\\s*", "", text, flags=re.I)
-    text = re.sub(r"\\s*\`\`\`$", "", text)
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I)
+    text = re.sub(r"\s*```$", "", text)
     return json.loads(text)
 
 def extract_output(data):
