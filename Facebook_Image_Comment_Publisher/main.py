@@ -100,28 +100,48 @@ def extract_post_id(link):
     raise ValueError("ما قدرتش نستخرج ID من الرابط. استعمل رابط منشور فيه ID رقمي أو رابط فيه story_fbid و id.")
 
 
-def load_csv(path):
+def read_csv_headers(path):
     with open(path, "r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        if not reader.fieldnames:
-            raise ValueError("CSV فارغ أو ما فيهش عناوين الأعمدة.")
-        lookup = {str(name).strip().casefold(): name for name in reader.fieldnames if name}
-        required = ("photo_link", "facebook_link", "comment")
-        if any(name not in lookup for name in required):
-            raise ValueError("خاص CSV يحتوي على هاد الأعمدة بالضبط: Photo_Link, Facebook_Link, Comment")
+        sample = handle.read(8192)
+        handle.seek(0)
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=",;\\t")
+        except csv.Error:
+            dialect = csv.excel
+        headers = next(csv.reader(handle, dialect), [])
+    headers = [str(value).strip() for value in headers]
+    if not headers or not any(headers):
+        raise ValueError("CSV فارغ أو ما فيهش عناوين الأعمدة.")
+    return headers
+
+
+def load_csv(path, column_map):
+    headers = read_csv_headers(path)
+    if not all(column_map.get(key) in headers for key in ("Facebook_Link", "Comment")):
+        raise ValueError("اختار عمود رابط المنشور وعمود التعليق.")
+    photo_column = column_map.get("Photo_Link", "")
+    if photo_column and photo_column not in headers:
+        raise ValueError("عمود الصورة المختار غير موجود.")
+    with open(path, "r", encoding="utf-8-sig", newline="") as handle:
+        sample = handle.read(8192)
+        handle.seek(0)
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=",;\\t")
+        except csv.Error:
+            dialect = csv.excel
+        reader = csv.DictReader(handle, dialect=dialect)
         rows = []
         for line_number, item in enumerate(reader, start=2):
             row = {
-                "Photo_Link": str(item.get(lookup["photo_link"], "") or "").strip(),
-                "Facebook_Link": str(item.get(lookup["facebook_link"], "") or "").strip(),
-                "Comment": str(item.get(lookup["comment"], "") or "").strip(),
+                "Photo_Link": str(item.get(photo_column, "") or "").strip() if photo_column else "",
+                "Facebook_Link": str(item.get(column_map["Facebook_Link"], "") or "").strip(),
+                "Comment": str(item.get(column_map["Comment"], "") or "").strip(),
             }
             if any(row.values()):
                 rows.append((line_number, row))
     if not rows:
         raise ValueError("ما كاين حتى سطر فيه بيانات فـ CSV.")
     return rows
-
 
 def make_row_key(csv_path, line_number, row):
     source = json.dumps([str(Path(csv_path).resolve()), line_number, row],
@@ -138,6 +158,9 @@ class PublisherApp:
         self.settings = load_settings()
         self.pages = self.settings.get("pages", [])
         self.csv_file = None
+        saved_columns = self.settings.get("csv_columns", {})
+        self.column_vars = {key: tk.StringVar(value=saved_columns.get(key, "")) for key in ("Photo_Link", "Facebook_Link", "Comment")}
+        self.column_boxes = {}
         self.events = queue.Queue()
         self.worker = None
         self.stop_event = threading.Event()
@@ -191,7 +214,19 @@ class PublisherApp:
         self.csv_label = ttk.Label(row, text="مازال ما اخترتيش CSV")
         self.csv_label.pack(side="left", fill="x", expand=True)
         ttk.Button(row, text="اختيار CSV", command=self.choose_csv).pack(side="right")
-        ttk.Label(csv_box, text="الأعمدة المطلوبة: Photo_Link, Facebook_Link, Comment — رابط الصورة اختياري.",
+        mapping = ttk.Frame(csv_box)
+        mapping.pack(fill="x", pady=(8, 0))
+        for index, (key, label) in enumerate([
+            ("Photo_Link", "عمود رابط الصورة (اختياري):"),
+            ("Facebook_Link", "عمود رابط منشور Facebook:"),
+            ("Comment", "عمود نص التعليق:"),
+        ]):
+            ttk.Label(mapping, text=label).grid(row=index, column=0, sticky="w", padx=(0, 10), pady=3)
+            combo = ttk.Combobox(mapping, textvariable=self.column_vars[key], state="readonly", width=48)
+            combo.grid(row=index, column=1, sticky="ew", pady=3)
+            self.column_boxes[key] = combo
+        mapping.columnconfigure(1, weight=1)
+        ttk.Label(csv_box, text="اختار أسماء الأعمدة من CSV؛ ما ضروريش تكون بنفس الأسماء.",
                   foreground="#555").pack(anchor="w", pady=(6, 0))
 
         options = ttk.Frame(outer)
@@ -325,9 +360,20 @@ class PublisherApp:
         if not path:
             return
         try:
-            rows = load_csv(path)
+            headers = read_csv_headers(path)
+            aliases = {
+                "Photo_Link": ("photo_link", "photo", "image", "image_url", "photo_url", "رابط الصورة", "الصورة"),
+                "Facebook_Link": ("facebook_link", "post_link", "facebook_url", "post_url", "رابط المنشور", "رابط فيسبوك"),
+                "Comment": ("comment", "comments", "text", "message", "التعليق", "نص التعليق"),
+            }
+            for key, combo in self.column_boxes.items():
+                combo["values"] = headers
+                current = self.column_vars[key].get()
+                if current not in headers:
+                    match = next((h for h in headers if h.casefold() in aliases[key]), "")
+                    self.column_vars[key].set(match)
             self.csv_file = Path(path)
-            self.csv_label.configure(text=f"{self.csv_file.name} — {len(rows)} سطر")
+            self.csv_label.configure(text=f"{self.csv_file.name} — اختار الأعمدة من الخانات")
         except Exception as exc:
             messagebox.showerror("CSV غير صالح", str(exc))
 
@@ -342,7 +388,10 @@ class PublisherApp:
             messagebox.showwarning("CSV ناقص", "اختار ملف CSV.")
             return
         try:
-            rows = load_csv(self.csv_file)
+            column_map = {key: var.get() for key, var in self.column_vars.items()}
+            rows = load_csv(self.csv_file, column_map)
+            self.settings["csv_columns"] = column_map
+            save_settings(self.settings)
             delay = int(self.delay.get())
             if delay < 0:
                 raise ValueError()
