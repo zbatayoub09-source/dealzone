@@ -12,10 +12,10 @@ MODEL='gemini-2.5-flash'
 ALIASES={
  'pagename':['pagename','page name','اسم الصفحة','اسم الصفحه','name','title'],
  'category':['category','التصنيف','الفئة','الفئه'],
- 'description':['description','about','الوصف','نبذة','نبذه'],
+ 'description':['description','bio','about','الوصف','نبذة','نبذه'],
  'usernamesuggestion':['usernamesuggestion','username','اسم المستخدم'],
- 'profileimageprompt':['profileimageprompt','profile prompt','وصف صورة البروفايل','صورة البروفايل'],
- 'coverimageprompt':['coverimageprompt','cover prompt','وصف صورة الغلاف','صورة الغلاف'],
+ 'profileimageprompt':['profileimageprompt','profile image prompt','profile prompt','وصف صورة البروفايل','صورة البروفايل'],
+ 'coverimageprompt':['coverimageprompt','cover image prompt','cover prompt','وصف صورة الغلاف','صورة الغلاف'],
  'website':['website','site','الموقع'],
  'status':['status','الحالة','الحاله'],
  'pageurl':['pageurl','page url','رابط الصفحة','رابط الصفحه'],
