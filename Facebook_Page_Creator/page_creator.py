@@ -1,204 +1,236 @@
 # -*- coding: utf-8 -*-
-"""Facebook Page Creator: map CSV columns and prepare page folders locally."""
-import csv, json, shutil, tkinter as tk, webbrowser, re, os
+"""Facebook Page Creator — Gemini CSV writer."""
+import csv
+import json
+import re
+import threading
+import urllib.request
+import urllib.error
+from datetime import datetime
 from pathlib import Path
+import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 APP_DIR = Path(__file__).resolve().parent
-OUTPUT_DIR = APP_DIR / "prepared_pages"
-FIELDS = [
-    ("page_name", "اسم الصفحة"),
-    ("username", "اسم المستخدم المقترح"),
-    ("bio", "نبذة قصيرة"),
-    ("description", "الوصف الكامل"),
-    ("category", "التصنيف"),
-    ("profile_image_prompt", "وصف صورة البروفايل"),
-    ("cover_image_prompt", "وصف صورة الغلاف"),
-    ("keywords", "الكلمات المفتاحية"),
-    ("profile_image", "مسار صورة البروفايل (اختياري)"),
-    ("website", "الموقع الإلكتروني"),
-    ("email", "البريد الإلكتروني"),
-    ("phone", "الهاتف"),
-    ("city", "المدينة"),
-    ("language", "اللغة"),
-]
+USED_NAMES_FILE = APP_DIR / "used_page_names.json"
+MODEL = "gemini-3.8-flash"
+API_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+COLUMNS = ["Page Name", "Username", "Bio", "Description", "Category",
+           "Profile Image Prompt", "Cover Image Prompt", "Keywords"]
 
-def slugify(value):
-    s = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(value).strip()).strip("-").lower()
-    return s or "facebook-page"
+ALIASES = {
+    "Page Name": ["page name", "page_name", "name", "title", "اسم الصفحة", "الاسم"],
+    "Username": ["username", "user name", "handle", "اسم المستخدم"],
+    "Bio": ["bio", "short bio", "short description", "نبذة", "نبذة قصيرة"],
+    "Description": ["description", "full description", "الوصف", "وصف"],
+    "Category": ["category", "type", "التصنيف", "الفئة"],
+    "Profile Image Prompt": ["profile image prompt", "profile_image_prompt", "profile prompt"],
+    "Cover Image Prompt": ["cover image prompt", "cover_image_prompt", "cover prompt"],
+    "Keywords": ["keywords", "tags", "الكلمات المفتاحية", "كلمات مفتاحية"],
+}
+
+def clean_json(text):
+    text = text.strip()
+    text = re.sub(r"^\`\`\`(?:json)?\\s*", "", text, flags=re.I)
+    text = re.sub(r"\\s*\`\`\`$", "", text)
+    return json.loads(text)
+
+def extract_output(data):
+    parts = []
+    for step in data.get("steps", []):
+        if step.get("type") == "model_output":
+            for item in step.get("content", []):
+                if item.get("type") == "text":
+                    parts.append(item.get("text", ""))
+    if parts:
+        return "\\n".join(parts)
+    if data.get("output_text"):
+        return data["output_text"]
+    raise ValueError("Gemini رجع جواباً بلا نص. جرّب مرة أخرى.")
 
 class App:
     def __init__(self, root):
         self.root = root
-        root.title("Facebook Page Creator | تجهيز الصفحات من CSV")
-        root.geometry("1020x820")
-        root.minsize(820, 680)
-        self.entries, self.rows, self.headers = {}, [], []
-        self.mapping, self.index = {}, 0
-        self.profile = self.cover = self.csv_path = None
-        self.status = tk.StringVar(value="جاهز. حمّل CSV ثم اختَر الأعمدة.")
+        root.title("Facebook Page Creator | Gemini CSV")
+        root.geometry("720x500")
+        root.minsize(620, 440)
+        self.api_key = tk.StringVar()
+        self.csv_path = None
+        self.stop_event = threading.Event()
+        self.worker = None
+        self.status = tk.StringVar(value="دخل Gemini API Key واختار CSV.")
+        self.progress = tk.StringVar(value="0 / 0")
         self.build()
 
     def build(self):
-        outer = ttk.Frame(self.root, padding=12); outer.pack(fill="both", expand=True)
-        ttk.Label(outer, text="أداة تجهيز صفحات Facebook", font=("Segoe UI", 17, "bold")).pack(anchor="w")
-        ttk.Label(outer, text="حمّل CSV بالقالب المرفق أو بأي أسماء أعمدة، ثم اربط الأعمدة بخانات الصفحة. الأداة لا تنشر ولا تنشئ الصفحة تلقائياً.", wraplength=970).pack(anchor="w", pady=(4,10))
-        bar = ttk.LabelFrame(outer, text="ملف CSV وربط الأعمدة", padding=8); bar.pack(fill="x")
-        row = ttk.Frame(bar); row.pack(fill="x")
-        ttk.Button(row, text="تحميل CSV واختيار الأعمدة", command=self.load_csv).pack(side="left", padx=4)
-        ttk.Button(row, text="تغيير ربط الأعمدة", command=self.mapping_window).pack(side="left", padx=4)
-        ttk.Button(row, text="تجهيز جميع الصفحات من CSV", command=self.save_all).pack(side="left", padx=4)
-        self.csv_label = ttk.Label(bar, text="لم يتم تحميل CSV بعد"); self.csv_label.pack(anchor="w", pady=(6,0))
-        nav = ttk.Frame(outer); nav.pack(fill="x", pady=8)
-        ttk.Button(nav, text="◀ السابق", command=self.prev).pack(side="left")
-        self.nav_label = ttk.Label(nav, text="لا توجد بيانات CSV"); self.nav_label.pack(side="left", padx=12)
-        ttk.Button(nav, text="التالي ▶", command=self.next).pack(side="left")
-        form = ttk.LabelFrame(outer, text="معلومات الصفحة الحالية", padding=9); form.pack(fill="both", expand=True)
-        for i,(key,label) in enumerate(FIELDS):
-            r,c = divmod(i,2); cell=ttk.Frame(form); cell.grid(row=r,column=c,sticky="ew",padx=7,pady=4)
-            ttk.Label(cell,text=label).pack(anchor="w")
-            ent=ttk.Entry(cell); ent.pack(fill="x",pady=(2,0)); self.entries[key]=ent
-        form.columnconfigure(0,weight=1); form.columnconfigure(1,weight=1)
-        assets=ttk.LabelFrame(outer,text="صور فعلية اختيارية (يمكن تركها فارغة)",padding=8); assets.pack(fill="x",pady=(8,0))
-        a=ttk.Frame(assets); a.pack(fill="x")
-        self.profile_label=ttk.Label(a,text="Profile: لم يتم الاختيار"); self.profile_label.pack(side="left",expand=True,anchor="w")
-        ttk.Button(a,text="اختيار Profile",command=self.pick_profile).pack(side="right")
-        b=ttk.Frame(assets); b.pack(fill="x",pady=(5,0))
-        self.cover_label=ttk.Label(b,text="Cover: لم يتم الاختيار"); self.cover_label.pack(side="left",expand=True,anchor="w")
-        ttk.Button(b,text="اختيار Cover",command=self.pick_cover).pack(side="right")
-        actions=ttk.Frame(outer); actions.pack(fill="x",pady=10)
-        ttk.Button(actions,text="حفظ الصفحة الحالية",command=self.save_current).pack(side="left",padx=4)
-        ttk.Button(actions,text="فتح إنشاء صفحة Facebook",command=lambda:webbrowser.open("https://www.facebook.com/pages/create/")).pack(side="left",padx=4)
-        ttk.Button(actions,text="فتح مجلد النتائج",command=self.open_output).pack(side="left",padx=4)
-        ttk.Label(outer,textvariable=self.status,wraplength=970).pack(anchor="w",pady=(6,0))
+        main = ttk.Frame(self.root, padding=18)
+        main.pack(fill="both", expand=True)
+        ttk.Label(main, text="Facebook Page Creator", font=("Segoe UI", 18, "bold")).pack(anchor="w")
+        ttk.Label(main, text="تعمير أعمدة CSV بالذكاء الاصطناعي Gemini", font=("Segoe UI", 11)).pack(anchor="w", pady=(2, 16))
 
-    def load_csv(self):
-        path=filedialog.askopenfilename(title="اختيار CSV",filetypes=[("CSV files","*.csv")])
-        if not path: return
+        ttk.Label(main, text="Gemini API Key").pack(anchor="w")
+        keyrow = ttk.Frame(main); keyrow.pack(fill="x", pady=(5, 14))
+        self.key_entry = ttk.Entry(keyrow, textvariable=self.api_key, show="*", font=("Segoe UI", 10))
+        self.key_entry.pack(side="left", fill="x", expand=True)
+        self.show_key = tk.BooleanVar(value=False)
+        ttk.Checkbutton(keyrow, text="إظهار", variable=self.show_key, command=self.toggle_key).pack(side="left", padx=8)
+
+        ttk.Label(main, text="ملف CSV").pack(anchor="w")
+        csvrow = ttk.Frame(main); csvrow.pack(fill="x", pady=(5, 8))
+        ttk.Button(csvrow, text="اختيار CSV", command=self.choose_csv).pack(side="left")
+        self.file_label = ttk.Label(csvrow, text="ما تختار حتى ملف", wraplength=480)
+        self.file_label.pack(side="left", padx=10)
+
+        ttk.Label(main, text="البرنامج كيستعمل نفس 8 أعمدة: Page Name, Username, Bio, Description, Category, Profile Image Prompt, Cover Image Prompt, Keywords.", wraplength=660).pack(anchor="w", pady=(8, 16))
+        buttons = ttk.Frame(main); buttons.pack(fill="x", pady=8)
+        self.start_btn = ttk.Button(buttons, text="إنشاء CSV بالذكاء الاصطناعي", command=self.start)
+        self.start_btn.pack(side="left", padx=(0, 8))
+        self.stop_btn = ttk.Button(buttons, text="إلغاء / إيقاف", command=self.stop, state="disabled")
+        self.stop_btn.pack(side="left")
+        ttk.Separator(main).pack(fill="x", pady=14)
+        ttk.Label(main, textvariable=self.status, wraplength=660).pack(anchor="w")
+        ttk.Label(main, textvariable=self.progress).pack(anchor="w", pady=(5, 6))
+        self.bar = ttk.Progressbar(main, mode="determinate", maximum=100)
+        self.bar.pack(fill="x")
+        ttk.Label(main, text="ملاحظة: المفتاح كيبقى غير فهاد التشغيل وما كيتكتبش فـ CSV ولا فـ GitHub.", foreground="#555").pack(anchor="w", pady=(18, 0))
+
+    def toggle_key(self):
+        self.key_entry.config(show="" if self.show_key.get() else "*")
+
+    def choose_csv(self):
+        path = filedialog.askopenfilename(title="اختيار ملف CSV", filetypes=[("CSV files", "*.csv")])
+        if path:
+            self.csv_path = Path(path)
+            self.file_label.config(text=self.csv_path.name)
+            self.status.set("تم اختيار CSV. دخل API Key واضغط إنشاء CSV.")
+
+    def stop(self):
+        self.stop_event.set()
+        self.status.set("طلبتي الإيقاف… غادي نوقف من بعد الطلب الحالي ونحفظ اللي تجهز.")
+
+    def start(self):
+        key = self.api_key.get().strip()
+        if not key:
+            messagebox.showwarning("API Key", "دخل Gemini API Key أولاً."); return
+        if not self.csv_path or not self.csv_path.exists():
+            messagebox.showwarning("CSV", "اختار ملف CSV أولاً."); return
         try:
-            with open(path,"r",encoding="utf-8-sig",newline="") as f:
-                reader=csv.DictReader(f)
-                self.headers=[h.strip() for h in (reader.fieldnames or []) if h and h.strip()]
-                self.rows=[{str(k).strip():(v or "").strip() for k,v in r.items() if k is not None} for r in reader]
-            if not self.headers or not self.rows: raise ValueError("CSV فارغ أو لا يحتوي على عناوين وأسطُر.")
-            self.csv_path=Path(path); self.mapping={k:"" for k,_ in FIELDS}
-            self.csv_label.config(text=f"{self.csv_path.name} — {len(self.rows)} صف، {len(self.headers)} عمود")
-            self.guess_mapping(); self.mapping_window()
-        except Exception as e: messagebox.showerror("خطأ CSV",str(e))
+            with self.csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+                reader = csv.DictReader(f)
+                headers = reader.fieldnames or []
+                rows = list(reader)
+            if not rows:
+                messagebox.showwarning("CSV", "الملف ما فيه حتى سطر."); return
+            if len(rows) > 500:
+                messagebox.showwarning("CSV", "اختار ملف فيه 500 سطر أو أقل."); return
+        except Exception as e:
+            messagebox.showerror("CSV", str(e)); return
+        self.stop_event.clear()
+        self.start_btn.config(state="disabled"); self.stop_btn.config(state="normal")
+        self.worker = threading.Thread(target=self.generate, args=(key, headers, rows), daemon=True)
+        self.worker.start()
 
-    def guess_mapping(self):
-        aliases={
-          "page_name":["page_name","page name","name","title","اسم الصفحة","الاسم"],
-          "username":["username","user name","handle","اسم المستخدم"],
-          "category":["category","type","التصنيف","الفئة"],
-          "description":["description","full description","وصف","الوصف","article"],
-          "bio":["bio","short description","short bio","نبذة","نبذة قصيرة"],
-          "profile_image_prompt":["profile_image_prompt","profile image prompt","profile prompt","وصف صورة البروفايل"],
-          "cover_image_prompt":["cover_image_prompt","cover image prompt","cover prompt","وصف صورة الغلاف"],
-          "keywords":["keywords","tags","الكلمات المفتاحية","كلمات مفتاحية"],
-          "website":["website","url","site","الموقع"],"email":["email","البريد"],
-          "phone":["phone","telephone","الهاتف"],"city":["city","location","المدينة"],
-          "language":["language","lang","اللغة"],
-          "profile_image":["profile_image","profile image","profile_photo","image","image_path","صورة البروفايل","الصورة"]}
-        lower={h.lower():h for h in self.headers}
-        for key,names in aliases.items():
-            for name in names:
-                if name.lower() in lower: self.mapping[key]=lower[name.lower()]; break
-
-    def mapping_window(self):
-        if not self.headers:
-            messagebox.showinfo("CSV","حمّل ملف CSV أولاً."); return
-        win=tk.Toplevel(self.root); win.title("اختيار أعمدة CSV"); win.geometry("650x700"); win.transient(self.root)
-        ttk.Label(win,text="اختَر العمود المناسب لكل معلومة. الاختيار اختياري ما عدا اسم الصفحة.",wraplength=610).pack(anchor="w",padx=12,pady=10)
-        vars_={}; frame=ttk.Frame(win,padding=10); frame.pack(fill="both",expand=True)
-        for i,(key,label) in enumerate(FIELDS):
-            ttk.Label(frame,text=label).grid(row=i,column=0,sticky="w",padx=5,pady=4)
-            v=tk.StringVar(value=self.mapping.get(key) or "(بدون ربط)")
-            ttk.Combobox(frame,textvariable=v,values=["(بدون ربط)"]+self.headers,state="readonly",width=36).grid(row=i,column=1,sticky="ew",padx=5,pady=4)
-            vars_[key]=v
-        frame.columnconfigure(1,weight=1)
-        def apply():
-            self.mapping={k:(v.get() if v.get()!="(بدون ربط)" else "") for k,v in vars_.items()}
-            if not self.mapping.get("page_name"):
-                messagebox.showwarning("اختيار ضروري","خاصك تربط خانة اسم الصفحة بعمود من CSV.",parent=win); return
-            self.index=0; self.show_row(); win.destroy()
-            self.status.set("تم ربط الأعمدة. تقدر تتنقل أو تجهز جميع الصفحات.")
-        ttk.Button(win,text="تطبيق الاختيارات",command=apply).pack(pady=12)
-
-    def mapped(self,row):
-        return {k:(row.get(self.mapping.get(k,""),"").strip() if self.mapping.get(k) else "") for k,_ in FIELDS}
-
-    def show_row(self):
-        if not self.rows:return
-        data=self.mapped(self.rows[self.index])
-        for k,_ in FIELDS:
-            self.entries[k].delete(0,"end"); self.entries[k].insert(0,data.get(k,""))
-        self.nav_label.config(text=f"الصفحة {self.index+1} من {len(self.rows)}")
-
-    def next(self):
-        if self.rows and self.index<len(self.rows)-1:self.index+=1;self.show_row()
-    def prev(self):
-        if self.rows and self.index>0:self.index-=1;self.show_row()
-
-    def pick_profile(self):
-        p=filedialog.askopenfilename(title="اختيار Profile",filetypes=[("Images","*.png *.jpg *.jpeg *.webp")])
-        if p:self.profile=Path(p);self.profile_label.config(text=f"Profile: {self.profile.name}")
-    def pick_cover(self):
-        p=filedialog.askopenfilename(title="اختيار Cover",filetypes=[("Images","*.png *.jpg *.jpeg *.webp")])
-        if p:self.cover=Path(p);self.cover_label.config(text=f"Cover: {self.cover.name}")
-
-    def save_data(self,data):
-        name=data.get("page_name","").strip()
-        if not name:raise ValueError("اسم الصفحة فارغ")
-        folder=OUTPUT_DIR/slugify(name);folder.mkdir(parents=True,exist_ok=True)
-        (folder/"page_info.json").write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
-        text=(f"اسم الصفحة: {name}\nاسم المستخدم المقترح: {data.get('username','')}\nالتصنيف: {data.get('category','')}\n\nالنبذة:\n{data.get('bio','')}\n\nالوصف الكامل:\n{data.get('description','')}\n\nوصف صورة البروفايل:\n{data.get('profile_image_prompt','')}\nوصف صورة الغلاف:\n{data.get('cover_image_prompt','')}\nالكلمات المفتاحية: {data.get('keywords','')}\nالموقع: {data.get('website','')}\nالبريد: {data.get('email','')}\nالهاتف: {data.get('phone','')}\nالمدينة: {data.get('city','')}\nاللغة: {data.get('language','')}\n")
-        (folder/"about.txt").write_text(text,encoding="utf-8")
-        image_value = str(data.get("profile_image", "")).strip()
-        image_source = None
-        if image_value:
-            candidate = Path(image_value).expanduser()
-            if not candidate.is_absolute() and self.csv_path:
-                candidate = self.csv_path.parent / candidate
-            if candidate.exists() and candidate.is_file(): image_source = candidate
-        if image_source:
-            shutil.copy2(image_source, folder / ("profile" + image_source.suffix.lower()))
-        elif self.profile and self.profile.exists():
-            shutil.copy2(self.profile, folder / ("profile" + self.profile.suffix.lower()))
-        if self.cover and self.cover.exists():shutil.copy2(self.cover,folder/("cover"+self.cover.suffix.lower()))
-
-    def save_current(self):
-        try:
-            data={k:e.get().strip() for k,e in self.entries.items()};self.save_data(data)
-            self.status.set("تم تجهيز الصفحة: "+data["page_name"])
-            messagebox.showinfo("تم","تم تجهيز الصفحة داخل prepared_pages.")
-        except Exception as e:messagebox.showerror("تعذر الحفظ",str(e))
-
-    def save_all(self):
-        if not self.rows or not self.mapping.get("page_name"):
-            messagebox.showinfo("CSV","حمّل CSV واربط عمود اسم الصفحة أولاً.");return
-        done,errors=0,[]
-        seen=set()
-        for i,row in enumerate(self.rows,1):
+    def existing_names(self):
+        if USED_NAMES_FILE.exists():
             try:
-                data=self.mapped(row)
-                key=slugify(data.get("page_name",""))
-                if key in seen: raise ValueError("اسم الصفحة مكرر داخل ملف CSV.")
-                seen.add(key)
-                self.save_data(data);done+=1
-            except Exception as e:errors.append(f"السطر {i+1}: {e}")
-        self.status.set(f"اكتمل التجهيز: {done} صفحة من أصل {len(self.rows)}.")
-        msg=f"تم تجهيز {done} صفحة من أصل {len(self.rows)}."
-        if errors:msg+="\n\nالأخطاء:\n"+"\n".join(errors[:12])
-        messagebox.showinfo("نتيجة التجهيز",msg)
+                data = json.loads(USED_NAMES_FILE.read_text(encoding="utf-8"))
+                return {str(x).strip().casefold() for x in data}
+            except Exception:
+                return set()
+        return set()
 
-    def open_output(self):
-        OUTPUT_DIR.mkdir(parents=True,exist_ok=True)
-        try:os.startfile(str(OUTPUT_DIR))
-        except Exception:messagebox.showinfo("مجلد النتائج",str(OUTPUT_DIR))
+    def save_names(self, names):
+        old = self.existing_names()
+        old.update(x.strip().casefold() for x in names if x.strip())
+        USED_NAMES_FILE.write_text(json.dumps(sorted(old), ensure_ascii=False, indent=2), encoding="utf-8")
 
-if __name__=="__main__":
-    root=tk.Tk()
-    try:ttk.Style().theme_use("clam")
-    except Exception:pass
-    App(root);root.mainloop()
+    def request_gemini(self, key, seed, row_number, used):
+        prompt = f"""
+You create professional Facebook business page CSV content.
+Return ONLY one valid JSON object, no markdown and no extra text.
+Required exact keys: {json.dumps(COLUMNS)}.
+Create a distinct, natural, brandable Facebook Page Name and unique lowercase Username.
+Write a short Bio, useful Description, suitable Facebook Category, detailed Profile Image Prompt,
+detailed wide Cover Image Prompt, and comma-separated Keywords.
+Use English. Do not claim official affiliation, guarantees, or fake discounts.
+Keep Bio concise, Description informative and original.
+The row's current CSV data is inspiration only; improve or replace it.
+Never use any of these existing page names: {json.dumps(sorted(list(used))[-250:], ensure_ascii=False)}.
+Source row number: {row_number}
+Source row data: {json.dumps(seed, ensure_ascii=False)}
+"""
+        body = json.dumps({"model": MODEL, "input": prompt}).encode("utf-8")
+        req = urllib.request.Request(API_URL, data=body, headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": key
+        }, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=90) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace")[:900]
+            raise RuntimeError(f"Gemini API HTTP {e.code}: {detail}")
+        except Exception as e:
+            raise RuntimeError(f"تعذر الاتصال بـ Gemini: {e}")
+        result = clean_json(extract_output(payload))
+        if isinstance(result, list):
+            result = result[0]
+        return {col: str(result.get(col, "")).strip() for col in COLUMNS}
+
+    def ui(self, message, done, total):
+        def update():
+            self.status.set(message)
+            self.progress.set(f"{done} / {total}")
+            self.bar["value"] = (done / total * 100) if total else 0
+        self.root.after(0, update)
+
+    def generate(self, key, headers, rows):
+        header_lookup = {h.strip().casefold(): h for h in headers if h}
+        aliases = {col: next((header_lookup[a.casefold()] for a in ALIASES[col] if a.casefold() in header_lookup), None) for col in COLUMNS}
+        used = self.existing_names()
+        results = []
+        errors = []
+        total = len(rows)
+        output = self.csv_path.with_name(self.csv_path.stem + "_gemini_filled_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
+        for i, row in enumerate(rows, 1):
+            if self.stop_event.is_set():
+                break
+            seed = {col: (row.get(aliases[col], "") if aliases[col] else "") for col in COLUMNS}
+            try:
+                data = self.request_gemini(key, seed, i, used)
+                name = data.get("Page Name", "").strip()
+                if not name:
+                    raise ValueError("Gemini ما عطاش اسم الصفحة.")
+                if name.casefold() in used:
+                    raise ValueError(f"اسم مكرر: {name}")
+                data["Username"] = re.sub(r"[^a-zA-Z0-9._]", "", data["Username"].replace(" ", "").lower())[:30]
+                if not data["Username"]:
+                    data["Username"] = re.sub(r"[^a-z0-9]", "", name.lower())[:30]
+                results.append(data)
+                used.add(name.casefold())
+                self.save_names([name])
+            except Exception as e:
+                errors.append(f"السطر {i}: {e}")
+            self.ui(f"جاري تجهيز CSV… {i} من {total}", i, total)
+            # Save progress continuously, so Stop does not lose completed rows.
+            with output.open("w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=COLUMNS)
+                writer.writeheader(); writer.writerows(results)
+        stopped = self.stop_event.is_set()
+        def finish():
+            self.start_btn.config(state="normal"); self.stop_btn.config(state="disabled")
+            self.status.set(("توقف بناءً على طلبك. " if stopped else "اكتمل العمل. ") + f"تجهز {len(results)} صفحة.")
+            if errors:
+                messagebox.showwarning("ملاحظات", "\n".join(errors[:8]))
+            if results:
+                messagebox.showinfo("تم إنشاء CSV", f"الملف:\n{output}\n\nعدد الصفحات: {len(results)}")
+            elif not stopped:
+                messagebox.showerror("لم يتم إنشاء CSV", "ما تجهز حتى سطر. راجع API Key والاتصال.")
+        self.root.after(0, finish)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    try: ttk.Style().theme_use("clam")
+    except Exception: pass
+    App(root)
+    root.mainloop()
