@@ -1,19 +1,28 @@
-# Shopify CSV exports — AliExpress sources only
+# Shopify import CSVs — EUR store
 
-These Shopify import CSVs were converted from the original AliExpress product-export category files in the repository root. They were NOT generated from Metricool files, Google Drive/Metricool publishing templates, or the `metricool*.csv` files.
-
-The source AliExpress exports contain fields such as `ProductId`, `Image Url`, `Video Url`, `Product Desc`, `Origin Price`, `Discount Price`, `Currency`, commission rates, `Sales180Day`, `Positive Feedback`, and `Promotion Url`.
+All product CSVs in this folder are converted from the original AliExpress category exports in the repository root. No Metricool or social-publishing CSVs were used.
 
 ## Import
-In Shopify Admin, open Products > Import, select one `.shopify.csv` file from this folder, review the preview, then import. Import one category file at a time.
+1. In Shopify Admin, open **Products → Import**.
+2. Upload one or more `.shopify.csv` files from this folder.
+3. Review Shopify's import preview before confirming.
+4. Products are set to **Draft**. Check supplier stock, variants, delivery costs, taxes, and final retail margins before publishing.
 
-## Important: currency
-The source files contain mixed currencies (USD, EUR and MAD). Shopify's Variant Price is a number interpreted in your store's base currency. The original currency is preserved in `custom.source_currency`, but prices have NOT been converted. Convert amounts to your Shopify store currency before publishing.
+## EUR price conversion
+All `Variant Price` and `Variant Compare At Price` values are EUR:
+- EUR source prices: unchanged.
+- USD source prices: multiplied by **0.9123 EUR per USD** (indicative rate, 26 Nov 2026).
+- MAD source prices: divided by **10.97 MAD per EUR** (indicative reference rate, 26 Nov 2026).
 
-## Metafield setup
-Before importing, create these product metafield definitions in Shopify Admin > Settings > Custom data > Products:
-- `custom.source_currency` — Single line text
-- `custom.aliexpress_promotion_url` — URL
-- `custom.source_product_id` — Single line text
+Converted values are rounded to 2 decimals. Original currency is preserved in `product.metafields.custom.source_currency`. Rates are indicative and are not a guarantee of the amount charged by AliExpress at checkout.
 
-All products are imported as drafts, with inventory tracking off. Promotion URLs and AliExpress product IDs are preserved in their metafields. Images are sourced from AliExpress image URLs. The exports include one default variant per product; video URLs and commission/statistics fields remain in the original AliExpress CSVs.
+## Preserved fields
+- AliExpress Product ID → SKU and `custom.source_product_id`
+- Promotion URL → `custom.aliexpress_promotion_url`
+- Product image URL → Shopify image source
+- One default variant per product
+
+Video URLs, commission rates, sales statistics, and supplier code campaigns remain in the original AliExpress CSVs and are not imported as Shopify product fields.
+
+## Important checks
+The source category CSVs may contain products that do not perfectly match their category name, and repeated product IDs have been deduplicated in the Shopify exports. Review product titles and category assignments before publishing. Shopify's import preview is the final check for your store's specific setup.
